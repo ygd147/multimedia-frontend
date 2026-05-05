@@ -32,6 +32,10 @@ export function getRawUrl(id: number): string {
   return `/api/media/${id}/raw`
 }
 
+export function getImage(id: number,page: number): string {
+  return `/api/media/${id}/chapter/${page}`
+}
+
 export function getCoverUrl(id: number): string {
   return `/api/media/${id}/cover`
 }

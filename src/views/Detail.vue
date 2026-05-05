@@ -75,7 +75,7 @@ const isProcessing = computed(() => detail.value?.status === MediaStatus.Process
 
       <!-- ZIP archive -->
       <div v-if="zipMeta && !isProcessing" class="archive-section">
-        <ImageCarousel :children="zipMeta.children" />
+        <ImageCarousel :mediaId="detail.id"  :children="zipMeta.children" />
       </div>
 
       <!-- Novel -->

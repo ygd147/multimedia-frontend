@@ -38,9 +38,13 @@ function onTabClick(tab: MediaType) {
 }
 
 function onCardClick(item: MediaItem) {
-  if (item.is_dir) {
+  const isImageFolder = item.is_dir && (item as any).category === 'image_folder'
+  
+  if (item.is_dir && !isImageFolder) {
+    // 普通目录：进入子目录
     enterDir(item.id, item.dir_name || '目录')
   } else {
+    // 文件 或者 图集目录：跳转详情页
     router.push({ name: 'detail', params: { id: item.id } })
   }
 }

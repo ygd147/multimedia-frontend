@@ -25,6 +25,7 @@ const isPreviewOpen = ref(false)
 const currentPreviewUrl = ref('')
 const currentPreviewAlt = ref('')
 const previewContainer = ref<HTMLElement | null>(null)
+void previewContainer
 
 // 缩放与拖拽状态
 const transform = reactive({
@@ -35,8 +36,6 @@ const transform = reactive({
 
 let dragStart = { x: 0, y: 0, translateX: 0, translateY: 0 }
 let isDragging = false
-let initialPinchDistance = 0
-let initialScale = 1
 
 function openPreview(url: string, alt: string) {
   currentPreviewUrl.value = url

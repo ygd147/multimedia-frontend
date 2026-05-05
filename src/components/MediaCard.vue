@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { MediaItem } from '../types/media'
 import { getThumbnailUrl } from '../api/media'
+import { formatFileSize } from '../utils/format'
 
 const props = defineProps<{
   item: MediaItem
@@ -10,18 +11,25 @@ const emit = defineEmits<{
   (e: 'click', item: MediaItem): void
 }>()
 
-// 判断是否为“图集目录”（需作为媒体资源展示）
+function isVideoItem(): boolean {
+  return (props.item as any).category === 'video'
+}
+
+function isVideoDir(): boolean {
+  return (props.item as any).category === 'directory'
+}
+
 function isImageFolder(): boolean {
   return !!props.item.is_dir && (props.item as any).category === 'image_folder'
 }
 
-// 获取预览图URL（统一使用thumbnail接口）
 function getPreviewUrl(): string {
   if (props.item.is_dir && !isImageFolder()) {
-    // 普通目录：返回文件夹图标占位（或空）
     return ''
   }
-  // 文件 或 图集目录：使用缩略图接口
+  if (isVideoItem() || isVideoDir()) {
+    return ''
+  }
   return getThumbnailUrl(props.item.id)
 }
 
@@ -39,20 +47,39 @@ function onClick() {
         :alt="item.file_name"
         loading="lazy"
       />
-      <div v-else-if="item.is_dir && !isImageFolder()" class="folder-icon">
-        📁
+      <div v-else-if="isVideoItem()" class="icon-placeholder video-icon">
+        <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.4">
+          <polygon points="5,3 19,12 5,21" fill="currentColor" />
+        </svg>
       </div>
-      <div v-else class="file-icon">📄</div>
+      <div v-else-if="item.is_dir && !isImageFolder()" class="icon-placeholder">
+        <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.4">
+          <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z" />
+        </svg>
+      </div>
+      <div v-else class="icon-placeholder">
+        <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.4">
+          <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+          <circle cx="8.5" cy="8.5" r="1.5" />
+          <polyline points="21,15 16,10 5,21" />
+        </svg>
+      </div>
     </div>
     <div class="card-info">
       <div class="file-name" :title="item.file_name">
         {{ item.file_name }}
       </div>
-      <div v-if="!item.is_dir" class="file-size">
-        {{ (item.file_size / 1024).toFixed(0) }} KB
+      <div v-if="isVideoItem() && item.file_size" class="file-size">
+        {{ formatFileSize(item.file_size) }}
+      </div>
+      <div v-else-if="!item.is_dir" class="file-size">
+        {{ formatFileSize(item.file_size) }}
       </div>
       <div v-else-if="isImageFolder()" class="folder-badge">
         图片合集
+      </div>
+      <div v-else-if="isVideoDir() && (item as any).children_count" class="folder-badge">
+        {{ (item as any).children_count }} 项
       </div>
     </div>
   </div>
@@ -88,9 +115,17 @@ function onClick() {
   object-fit: cover;
 }
 
-.folder-icon, .file-icon {
-  font-size: 48px;
-  opacity: 0.7;
+.icon-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  color: var(--text-muted);
+}
+
+.video-icon {
+  background: #1a1a2e;
 }
 
 .card-info {

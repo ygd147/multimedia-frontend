@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { MediaType } from '../types/media'
 import type { MediaItem } from '../types/media'
 import { useMediaList } from '../composables/useMediaList'
+import { useVideoList } from '../composables/useVideoList'
 import SearchBar from '../components/SearchBar.vue'
 import MediaCard from '../components/MediaCard.vue'
 import Pagination from '../components/Pagination.vue'
@@ -25,12 +26,37 @@ function getTabFromQuery(): MediaType {
 }
 
 const activeTab = ref<MediaType>(getTabFromQuery())
-const mediaType = computed(() => activeTab.value)
+const isVideoTab = computed(() => activeTab.value === MediaType.Video)
+const mediaType = computed(() => isVideoTab.value ? null : activeTab.value)
 
-const { items, total, loading, page, perPage, dirStack, loadData, search, changePage, enterDir, backToDir } =
-  useMediaList(mediaType)
+// Image/Novel composable
+const mediaList = useMediaList(mediaType)
 
-loadData()
+// Video composable
+const videoList = useVideoList()
+
+// Unified state - switch based on active tab
+const items = computed<MediaItem[]>(() => {
+  if (isVideoTab.value) {
+    return videoList.items.value as unknown as MediaItem[]
+  }
+  return mediaList.items.value
+})
+const total = computed(() => isVideoTab.value ? videoList.total.value : mediaList.total.value)
+const loading = computed(() => isVideoTab.value ? videoList.loading.value : mediaList.loading.value)
+const page = computed(() => isVideoTab.value ? videoList.page.value : mediaList.page.value)
+const perPage = computed(() => isVideoTab.value ? videoList.perPage.value : mediaList.perPage.value)
+const dirStack = computed(() => isVideoTab.value ? videoList.dirStack.value : mediaList.dirStack.value)
+
+// Load initial data
+mediaList.loadData()
+
+// When switching to video tab, load video data if not loaded
+watch(isVideoTab, (isVideo) => {
+  if (isVideo && videoList.items.value.length === 0) {
+    videoList.loadData()
+  }
+})
 
 function onTabClick(tab: MediaType) {
   activeTab.value = tab
@@ -38,19 +64,52 @@ function onTabClick(tab: MediaType) {
 }
 
 function onCardClick(item: MediaItem) {
-  const isImageFolder = item.is_dir && (item as any).category === 'image_folder'
-  
-  if (item.is_dir && !isImageFolder) {
-    // 普通目录：进入子目录
-    enterDir(item.id, item.dir_name || '目录')
-  } else {
-    // 文件 或者 图集目录：跳转详情页
-    router.push({ name: 'detail', params: { id: item.id } })
+  const itemAny = item as any
+  const isVideoDir = itemAny.category === 'directory'
+  const isVideoFile = itemAny.category === 'video'
+  const isImageFolder = item.is_dir && itemAny.category === 'image_folder'
+
+  if (isVideoFile) {
+    router.push({ name: 'video-detail', params: { id: item.id } })
+    return
   }
+
+  if (isVideoDir) {
+    videoList.enterDir(item.id, item.file_name || '目录')
+    return
+  }
+
+  if (item.is_dir && !isImageFolder) {
+    mediaList.enterDir(item.id, item.dir_name || '目录')
+    return
+  }
+
+  // File or image_folder: navigate to detail page
+  router.push({ name: 'detail', params: { id: item.id } })
 }
 
 function onSearch(kw: string) {
-  search(kw)
+  if (isVideoTab.value) {
+    videoList.search(kw)
+  } else {
+    mediaList.search(kw)
+  }
+}
+
+function onChangePage(p: number) {
+  if (isVideoTab.value) {
+    videoList.changePage(p)
+  } else {
+    mediaList.changePage(p)
+  }
+}
+
+function onBackToDir(index: number) {
+  if (isVideoTab.value) {
+    videoList.backToDir(index)
+  } else {
+    mediaList.backToDir(index)
+  }
 }
 </script>
 
@@ -74,13 +133,13 @@ function onSearch(kw: string) {
     </nav>
 
     <div v-if="dirStack.length > 0" class="breadcrumb">
-      <span class="breadcrumb-item" @click="backToDir(-1)">根目录</span>
+      <span class="breadcrumb-item" @click="onBackToDir(-1)">根目录</span>
       <template v-for="(d, i) in dirStack" :key="d.id">
         <span class="breadcrumb-sep">/</span>
         <span
           class="breadcrumb-item"
           :class="{ current: i === dirStack.length - 1 }"
-          @click="backToDir(i)"
+          @click="onBackToDir(i)"
         >
           {{ d.name }}
         </span>
@@ -110,7 +169,7 @@ function onSearch(kw: string) {
       :page="page"
       :total="total"
       :per-page="perPage"
-      @change="changePage"
+      @change="onChangePage"
     />
   </div>
 </template>

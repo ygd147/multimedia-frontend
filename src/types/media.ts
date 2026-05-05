@@ -20,7 +20,7 @@ export interface MediaItem {
   status: MediaStatus
   parent_id: number | null
   created_at: string
-  is_dir?: boolean
+  is_dir?: number
   dir_name?: string
 }
 
@@ -65,6 +65,8 @@ export type MediaMeta = ImageMeta | ZipMeta | NovelMeta | VideoMeta
 
 export interface MediaDetail extends MediaItem {
   meta: MediaMeta
+  pages?: ComicPage[]      // ⭐ 新增：页列表（由后端 /pages 或 /detail 返回）
+  children_count?: number  // 可选：子项数量
 }
 
 export interface ApiResponse<T> {
@@ -86,4 +88,12 @@ export interface MediaListParams {
   media_type?: MediaType
   keyword?: string
   parent_id?: number
+}
+
+// types/media.ts 新增
+export interface ComicPage {
+  index: number           // 页码（0起始）
+  file_name: string
+  type: 'folder' | 'zip'  // 图片来源类型
+  file_path?: string      // 仅 ZIP 内部路径
 }

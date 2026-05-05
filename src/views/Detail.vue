@@ -2,10 +2,10 @@
 import { onMounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { MediaType, MediaStatus } from '../types/media'
-import type { ImageMeta, ZipMeta, NovelMeta, VideoMeta } from '../types/media'
+import type {  ZipMeta, NovelMeta, VideoMeta } from '../types/media'
 import { useMediaDetail } from '../composables/useMediaDetail'
 import { formatFileSize, formatDuration, statusText, mediaTypeLabel } from '../utils/format'
-import { getRawUrl, getCoverUrl } from '../api/media'
+import {  getCoverUrl } from '../api/media'
 import StatusBadge from '../components/StatusBadge.vue'
 import ImageCarousel from '../components/ImageCarousel.vue'
 
@@ -21,11 +21,15 @@ function goBack() {
   router.back()
 }
 
-const imageMeta = computed(() => (detail.value?.media_type === MediaType.Image && detail.value.meta) ? detail.value.meta as ImageMeta : null)
+//const imageMeta = computed(() => (detail.value?.media_type === MediaType.Image && detail.value.meta) ? detail.value.meta as ImageMeta : null)
 const zipMeta = computed(() => (detail.value?.media_type === MediaType.Image && (detail.value.meta as ZipMeta).is_archive === 1) ? detail.value.meta as ZipMeta : null)
 const novelMeta = computed(() => detail.value?.media_type === MediaType.Novel ? detail.value.meta as NovelMeta : null)
 const videoMeta = computed(() => detail.value?.media_type === MediaType.Video ? detail.value.meta as VideoMeta : null)
+const pages = computed(() => detail.value?.pages)
 
+const isImageFolder = computed(() => 
+  detail.value?.is_dir === 1 && detail.value?.media_type === MediaType.Image
+)
 const isProcessing = computed(() => detail.value?.status === MediaStatus.Processing)
 </script>
 
@@ -61,7 +65,7 @@ const isProcessing = computed(() => detail.value?.status === MediaStatus.Process
       </div>
 
       <!-- Plain image -->
-      <div v-if="imageMeta && !zipMeta && !isProcessing" class="image-section">
+      <!-- <div v-if="imageMeta && !zipMeta && !isProcessing" class="image-section">
         <img
           :src="getRawUrl(detail.id)"
           :alt="detail.file_name"
@@ -71,11 +75,11 @@ const isProcessing = computed(() => detail.value?.status === MediaStatus.Process
           <span>尺寸: {{ imageMeta.width }} x {{ imageMeta.height }}</span>
           <span v-if="imageMeta.main_color">主色: {{ imageMeta.main_color }}</span>
         </div>
-      </div>
+      </div> -->
 
       <!-- ZIP archive -->
-      <div v-if="zipMeta && !isProcessing" class="archive-section">
-        <ImageCarousel :mediaId="detail.id"  :children="zipMeta.children" />
+      <div v-if="(zipMeta || isImageFolder) && !isProcessing" class="archive-section">
+        <ImageCarousel :mediaId="detail.id" :children="pages || []" />
       </div>
 
       <!-- Novel -->

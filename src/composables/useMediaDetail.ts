@@ -46,6 +46,6 @@ export function useMediaDetail() {
   }
 
   onUnmounted(() => stopPolling())
-
+  console.log(detail.value)
   return { detail, loading, polling, loadDetail }
 }

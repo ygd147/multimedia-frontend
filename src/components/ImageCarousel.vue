@@ -1,17 +1,19 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted, onUnmounted } from 'vue'
-import type { ChildImage } from '../types/media'
+import type { ComicPage } from '../types/media'
 import { getImage } from '../api/media'
 
 const props = defineProps<{
   mediaId: number
-  children: ChildImage[]
+  children: ComicPage[]
 }>()
 
-// 获取图片页码（优先使用 page 字段，否则使用索引+1）
-function getPageNumber(child: ChildImage, index: number): number {
-  return (child as any).page ?? (index)
-}
+// 调试：打印收到的数据
+onMounted(() => {
+  console.log('[ImageCarousel] mediaId:', props.mediaId)
+  console.log('[ImageCarousel] children length:', props.children.length)
+  console.log('[ImageCarousel] first 3 children:', props.children.slice(0, 3))
+})
 
 // 图片加载失败占位
 function handleImageError(event: Event) {
@@ -27,7 +29,6 @@ const currentPreviewAlt = ref('')
 const previewContainer = ref<HTMLElement | null>(null)
 void previewContainer
 
-// 缩放与拖拽状态
 const transform = reactive({
   scale: 1,
   translateX: 0,
@@ -42,7 +43,6 @@ function openPreview(url: string, alt: string) {
   currentPreviewAlt.value = alt
   isPreviewOpen.value = true
   resetTransform()
-  // 阻止背景滚动
   document.body.style.overflow = 'hidden'
 }
 
@@ -58,21 +58,18 @@ function resetTransform() {
   transform.translateY = 0
 }
 
-// 滚轮缩放
 function onWheel(e: WheelEvent) {
   if (!isPreviewOpen.value) return
   e.preventDefault()
   const delta = e.deltaY > 0 ? 0.9 : 1.1
   const newScale = Math.min(Math.max(transform.scale * delta, 0.5), 5)
   transform.scale = newScale
-  // 如果缩放回1，同时重置位移
   if (transform.scale === 1) {
     transform.translateX = 0
     transform.translateY = 0
   }
 }
 
-// 鼠标拖拽移动（仅当缩放 > 1.02 时）
 function onMouseDown(e: MouseEvent) {
   if (!isPreviewOpen.value || transform.scale <= 1.02) return
   e.preventDefault()
@@ -155,7 +152,6 @@ function onTouchEnd() {
   touchStartDistance = 0
 }
 
-// 键盘 ESC 关闭
 function onKeyDown(e: KeyboardEvent) {
   if (e.key === 'Escape' && isPreviewOpen.value) {
     closePreview()
@@ -174,30 +170,26 @@ onUnmounted(() => {
 
 <template>
   <div class="waterfall-gallery">
-    <!-- 图片总数信息 -->
-    <div class="gallery-header" v-if="children.length">
+    <div v-if="children.length" class="gallery-header">
       <span class="total-count">共 {{ children.length }} 张图片</span>
     </div>
 
-    <!-- 瀑布流列表：一行一张图 -->
     <div class="gallery-list">
       <div
-        v-for="(child, idx) in children"
-        :key="child.id"
+        v-for="child in children"
+        :key="child.index"
         class="gallery-item"
       >
         <img
-          :src="getImage(mediaId, getPageNumber(child, idx))"
+          :src="getImage(mediaId, child.index)"
           :alt="child.file_name"
           class="gallery-image"
           loading="lazy"
           @error="handleImageError"
-          @click="openPreview(getImage(mediaId, getPageNumber(child, idx)), child.file_name)"
+          @click="openPreview(getImage(mediaId, child.index), child.file_name)"
         />
       </div>
     </div>
-
-    <div v-if="!children.length" class="empty-state">暂无图片</div>
 
     <!-- 全屏预览灯箱 -->
     <Teleport to="body">
@@ -231,7 +223,6 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
-/* 极简样式：去掉多余装饰 */
 .waterfall-gallery {
   width: 100%;
   max-width: 1000px;
@@ -356,7 +347,6 @@ onUnmounted(() => {
   backdrop-filter: blur(4px);
 }
 
-/* 移动端适配 */
 @media (max-width: 768px) {
   .waterfall-gallery {
     padding: 8px;

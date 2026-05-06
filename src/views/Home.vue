@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch,onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { MediaType } from '../types/media'
 import type { MediaItem } from '../types/media'
@@ -49,7 +49,33 @@ const perPage = computed(() => isVideoTab.value ? videoList.perPage.value : medi
 const dirStack = computed(() => isVideoTab.value ? videoList.dirStack.value : mediaList.dirStack.value)
 
 // Load initial data
-mediaList.loadData()
+const loadCurrentTabData = () => {
+  if (isVideoTab.value) {
+    if (videoList.items.value.length === 0) {
+      videoList.loadData()
+    }
+  } else {
+    mediaList.loadData()
+  }
+}
+
+// 3. 监听路由 query 的变化 (防止组件复用时不更新)
+watch(() => route.query.tab, () => {
+  const newTab = getTabFromQuery()
+  if (activeTab.value !== newTab) {
+    activeTab.value = newTab
+  }
+})
+
+// 4. 监听 activeTab 的变化，切换时加载对应数据
+watch(activeTab, () => {
+  loadCurrentTabData()
+})
+
+// 5. 组件挂载时，根据当前状态决定加载谁
+onMounted(() => {
+  loadCurrentTabData()
+})
 
 // When switching to video tab, load video data if not loaded
 watch(isVideoTab, (isVideo) => {
@@ -57,6 +83,23 @@ watch(isVideoTab, (isVideo) => {
     videoList.loadData()
   }
 })
+
+watch(activeTab, (newTab) => {
+  if (newTab === MediaType.Video) {
+    // 切换到视频 Tab
+    // 策略 A: 每次切换都刷新 (如果需要实时性高)
+    // videoList.loadData() 
+    
+    // 策略 B: 仅当数据为空时加载 (推荐，避免不必要的请求)
+    if (videoList.items.value.length === 0) {
+      videoList.loadData()
+    }
+  } else {
+    // 切换到非视频 Tab (可选：如果需要清理视频状态)
+    // videoList.reset() 
+  }
+})
+
 
 function onTabClick(tab: MediaType) {
   activeTab.value = tab
@@ -67,24 +110,26 @@ function onCardClick(item: MediaItem) {
   const itemAny = item as any
   const isVideoDir = itemAny.category === 'directory'
   const isVideoFile = itemAny.category === 'video'
-  const isImageFolder = item.is_dir && itemAny.category === 'image_folder'
 
+  // 1. 视频文件
   if (isVideoFile) {
     router.push({ name: 'video-detail', params: { id: item.id } })
     return
   }
 
+  // 2. 视频目录
   if (isVideoDir) {
     videoList.enterDir(item.id, item.file_name || '目录')
     return
   }
 
-  if (item.is_dir && !isImageFolder) {
-    mediaList.enterDir(item.id, item.dir_name || '目录')
+  // 🔥 修复点：所有目录（普通目录 + 图片目录）统一点击进入
+  if (item.is_dir) {
+    mediaList.enterDir(item.id, item.dir_name || item.file_name || '目录')
     return
   }
 
-  // File or image_folder: navigate to detail page
+  // 3. 普通文件（漫画/小说详情）
   router.push({ name: 'detail', params: { id: item.id } })
 }
 

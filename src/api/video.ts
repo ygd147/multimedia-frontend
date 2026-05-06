@@ -15,7 +15,7 @@ http.interceptors.response.use(
 )
 
 export async function fetchVideoList(params: VideoListParams): Promise<PaginatedVideoData> {
-  const { data } = await http.get<VideoApiResponse<PaginatedVideoData>>('/', { params })
+  const { data } = await http.get<VideoApiResponse<PaginatedVideoData>>('', { params })
   return data.data
 }
 

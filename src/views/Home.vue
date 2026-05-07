@@ -107,30 +107,26 @@ function onTabClick(tab: MediaType) {
 }
 
 function onCardClick(item: MediaItem) {
-  const itemAny = item as any
-  const isVideoDir = itemAny.category === 'directory'
-  const isVideoFile = itemAny.category === 'video'
-
-  // 1. 视频文件
-  if (isVideoFile) {
+  // 1. 视频文件（仅视频 Tab 下可能出现）
+  if (isVideoTab.value && (item as any).category === 'video') {
     router.push({ name: 'video-detail', params: { id: item.id } })
     return
   }
 
-  // 2. 视频目录
-  if (isVideoDir) {
-    videoList.enterDir(item.id, item.file_name || '目录')
-    return
-  }
-
-  // 🔥 修复点：所有目录（普通目录 + 图片目录）统一点击进入
+  // 2. 任何目录 —— 按当前激活的 Tab 进入对应的目录栈
   if (item.is_dir) {
-    mediaList.enterDir(item.id, item.dir_name || item.file_name || '目录')
+    if (isVideoTab.value) {
+      videoList.enterDir(item.id, (item as any).file_name || item.dir_name || '目录')
+    } else {
+      mediaList.enterDir(item.id, item.dir_name || (item as any).file_name || '目录')
+    }
     return
   }
 
-  // 3. 普通文件（漫画/小说详情）
-  router.push({ name: 'detail', params: { id: item.id } })
+  // 3. 非视频的文件（漫画/小说详情）
+  if (!isVideoTab.value) {
+    router.push({ name: 'detail', params: { id: item.id } })
+  }
 }
 
 function onSearch(kw: string) {

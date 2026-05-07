@@ -6,6 +6,7 @@ export interface VideoItem {
   file_size?: number
   children_count?: number
   created_at: string
+  parent_id?: number  // 新增父目录ID
 }
 
 export interface VideoScanStatus {

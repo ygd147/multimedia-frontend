@@ -12,19 +12,26 @@ npm run preview    # Preview production build locally
 
 ## Project Architecture
 
-Vue 3 + TypeScript multimedia resource browser for a personal media server (no auth). Two independent backends proxied via Vite:
+Vue 3 + TypeScript multimedia resource browser for a personal media server (no auth). Three independent API backends proxied via Vite:
 
 ```
-Vite proxy: /api -> http://192.168.0.100:8000
+Vite proxy: /api -> http://192.168.1.100:8000
 ```
 
-### Two API Modules
+### Three API Modules
 
-- **`src/api/media.ts`** — `/api/media` — serves images (including ZIP archives) and novels
+- **`src/api/media.ts`** — `/api/media` — serves images (including ZIP archives)
   - Response wrapper: `ApiResponse<T>` with `code: 200` on success
   - `fetchMediaList(params)` — paginated list with `media_type`, `keyword`, `parent_id` filters
-  - `fetchMediaDetail(id)` — returns detail with conditional meta (ImageMeta/ZipMeta/NovelMeta/VideoMeta)
+  - `fetchMediaDetail(id)` — returns detail with conditional meta (ImageMeta/ZipMeta)
   - URL helpers: `getThumbnailUrl`, `getRawUrl`, `getImage`, `getCoverUrl`, `getStreamUrl`, `getChapterUrl`
+
+- **`src/api/novel.ts`** — `/api/novel` — serves novels with directory tree support
+  - Response wrapper: `NovelApiResponse<T>` with `code: 0` on success
+  - `fetchNovelList(params)` — items have `is_dir`, `media_type: 2|3` (2=novel, 3=directory)
+  - `fetchChapters(novelId)` — returns chapter list with `chapter_order`, `word_count`
+  - `fetchChapterContent(chapterId)` — returns full text content (⚠️ can be huge — use virtual list)
+  - `deleteNovel(id)` — cascading physical delete
 
 - **`src/api/video.ts`** — `/api/video` — serves videos with directory tree support
   - Response wrapper: `VideoApiResponse<T>` with `code: 0` on success (different from media API!)
@@ -32,22 +39,24 @@ Vite proxy: /api -> http://192.168.0.100:8000
   - `fetchVideoDetail(id)`, `deleteVideo(id)`, `getVideoStreamUrl(id)`
   - Scan endpoints: `triggerScan()`, `fetchScanStatus()`
 
-### Two Composable Patterns (Not Yet Unified)
+### Three Composable Patterns (Not Yet Unified)
 
-- **`src/composables/useMediaList.ts`** — manages list state for image/novel tabs
+- **`src/composables/useMediaList.ts`** — manages list state for the image tab only
   - States: `items`, `total`, `loading`, `page`, `perPage`, `keyword`, `parentId`, `dirStack`
   - Functions: `loadData()`, `search(kw)` (300ms debounce), `changePage(n)`, `enterDir(id, name)`, `backToDir(n)`
   - Takes `mediaType: Ref<MediaType | null>` param, re-fetches on type change
 
-- **`src/composables/useVideoList.ts`** — identical pattern but for video API (no `media_type` param)
+- **`src/composables/useVideoList.ts`** — identical pattern using video API (no `media_type` param)
+- **`src/composables/useNovelList.ts`** — identical pattern using novel API
 - **`src/composables/useMediaDetail.ts`** — fetches detail by ID, polls every 3s while `status === 1` (Processing)
 
 ### Routing (`src/router/index.ts`)
 
 ```
 /                  -> Home.vue       (tabs: 漫画/小说/视频, ?tab=N query param)
-/detail/:id        -> Detail.vue     (image/ZIP/novel/video metadata)
-/video/:id         -> VideoDetail.vue (DPlayer video playback)
+/detail/:id        -> Detail.vue     (image/ZIP metadata + carousel)
+/video/:id         -> VideoDetail.vue (DPlayer video playback + episode list)
+/novel/:id         -> NovelDetail.vue (chapter sidebar + virtual-scroll reader)
 ```
 
 All routes are lazy-loaded. Tab state is persisted via `route.query.tab`.
@@ -57,15 +66,18 @@ All routes are lazy-loaded. Tab state is persisted via `route.query.tab`.
 ```
 App.vue
   └── <router-view>
-        ├── Home.vue           — uses BOTH useMediaList + useVideoList, switches via computed
+        ├── Home.vue           — uses ALL THREE composables (media/video/novel), switches via computed
         │     ├── SearchBar.vue
-        │     ├── MediaCard.vue  — handles video/image/folder/directory via `category` and `is_dir`
+        │     ├── MediaCard.vue  — handles video/image/novel/folder via `category`, `media_type`, `is_dir`
         │     └── Pagination.vue
         ├── Detail.vue         — uses useMediaDetail, conditionally renders:
         │     ├── StatusBadge.vue
         │     └── ImageCarousel.vue  — waterfall gallery + fullscreen preview lightbox
-        └── VideoDetail.vue    — uses fetchVideoDetail, renders:
-              └── VideoPlayer.vue    — DPlayer wrapper (onMounted init, onUnmounted destroy)
+        ├── VideoDetail.vue    — uses fetchVideoDetail, renders:
+        │     └── VideoPlayer.vue    — DPlayer wrapper (exposes switchVideo, loadSubtitle, toggleSubtitle)
+        └── NovelDetail.vue    — uses fetchChapters + fetchChapterContent, renders:
+              ├── chapter sidebar (scrollable list)
+              └── virtual-scroll reader (only visible lines in DOM, avoids OOM on huge content)
 ```
 
 ### Directory Navigation Pattern

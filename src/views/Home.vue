@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { ref, computed, watch,onMounted } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { MediaType } from '../types/media'
 import type { MediaItem } from '../types/media'
 import { useMediaList } from '../composables/useMediaList'
 import { useVideoList } from '../composables/useVideoList'
+import { useNovelList } from '../composables/useNovelList'
 import SearchBar from '../components/SearchBar.vue'
 import MediaCard from '../components/MediaCard.vue'
 import Pagination from '../components/Pagination.vue'
@@ -27,39 +28,62 @@ function getTabFromQuery(): MediaType {
 
 const activeTab = ref<MediaType>(getTabFromQuery())
 const isVideoTab = computed(() => activeTab.value === MediaType.Video)
-const mediaType = computed(() => isVideoTab.value ? null : activeTab.value)
+const isNovelTab = computed(() => activeTab.value === MediaType.Novel)
+const mediaType = computed(() => (isVideoTab.value || isNovelTab.value) ? null : activeTab.value)
 
-// Image/Novel composable
+// Image composable (only for Image tab now)
 const mediaList = useMediaList(mediaType)
 
 // Video composable
 const videoList = useVideoList()
 
-// Unified state - switch based on active tab
+// Novel composable
+const novelList = useNovelList()
+
+// Unified state — switch based on active tab
 const items = computed<MediaItem[]>(() => {
-  if (isVideoTab.value) {
-    return videoList.items.value as unknown as MediaItem[]
-  }
+  if (isVideoTab.value) return videoList.items.value as unknown as MediaItem[]
+  if (isNovelTab.value) return novelList.items.value as unknown as MediaItem[]
   return mediaList.items.value
 })
-const total = computed(() => isVideoTab.value ? videoList.total.value : mediaList.total.value)
-const loading = computed(() => isVideoTab.value ? videoList.loading.value : mediaList.loading.value)
-const page = computed(() => isVideoTab.value ? videoList.page.value : mediaList.page.value)
-const perPage = computed(() => isVideoTab.value ? videoList.perPage.value : mediaList.perPage.value)
-const dirStack = computed(() => isVideoTab.value ? videoList.dirStack.value : mediaList.dirStack.value)
+const total = computed(() => {
+  if (isVideoTab.value) return videoList.total.value
+  if (isNovelTab.value) return novelList.total.value
+  return mediaList.total.value
+})
+const loading = computed(() => {
+  if (isVideoTab.value) return videoList.loading.value
+  if (isNovelTab.value) return novelList.loading.value
+  return mediaList.loading.value
+})
+const page = computed(() => {
+  if (isVideoTab.value) return videoList.page.value
+  if (isNovelTab.value) return novelList.page.value
+  return mediaList.page.value
+})
+const perPage = computed(() => {
+  if (isVideoTab.value) return videoList.perPage.value
+  if (isNovelTab.value) return novelList.perPage.value
+  return mediaList.perPage.value
+})
+const dirStack = computed(() => {
+  if (isVideoTab.value) return videoList.dirStack.value
+  if (isNovelTab.value) return novelList.dirStack.value
+  return mediaList.dirStack.value
+})
 
-// Load initial data
-const loadCurrentTabData = () => {
+// Load current tab data
+function loadCurrentTabData() {
   if (isVideoTab.value) {
-    if (videoList.items.value.length === 0) {
-      videoList.loadData()
-    }
+    if (videoList.items.value.length === 0) videoList.loadData()
+  } else if (isNovelTab.value) {
+    if (novelList.items.value.length === 0) novelList.loadData()
   } else {
     mediaList.loadData()
   }
 }
 
-// 3. 监听路由 query 的变化 (防止组件复用时不更新)
+// Watch route query for tab changes
 watch(() => route.query.tab, () => {
   const newTab = getTabFromQuery()
   if (activeTab.value !== newTab) {
@@ -67,39 +91,14 @@ watch(() => route.query.tab, () => {
   }
 })
 
-// 4. 监听 activeTab 的变化，切换时加载对应数据
+// When active tab changes, load corresponding data
 watch(activeTab, () => {
   loadCurrentTabData()
 })
 
-// 5. 组件挂载时，根据当前状态决定加载谁
 onMounted(() => {
   loadCurrentTabData()
 })
-
-// When switching to video tab, load video data if not loaded
-watch(isVideoTab, (isVideo) => {
-  if (isVideo && videoList.items.value.length === 0) {
-    videoList.loadData()
-  }
-})
-
-watch(activeTab, (newTab) => {
-  if (newTab === MediaType.Video) {
-    // 切换到视频 Tab
-    // 策略 A: 每次切换都刷新 (如果需要实时性高)
-    // videoList.loadData() 
-    
-    // 策略 B: 仅当数据为空时加载 (推荐，避免不必要的请求)
-    if (videoList.items.value.length === 0) {
-      videoList.loadData()
-    }
-  } else {
-    // 切换到非视频 Tab (可选：如果需要清理视频状态)
-    // videoList.reset() 
-  }
-})
-
 
 function onTabClick(tab: MediaType) {
   activeTab.value = tab
@@ -107,24 +106,34 @@ function onTabClick(tab: MediaType) {
 }
 
 function onCardClick(item: MediaItem) {
-  // 1. 视频文件（仅视频 Tab 下可能出现）
-  if (isVideoTab.value && (item as any).category === 'video') {
+  const itemAny = item as any
+
+  // Video file
+  if (isVideoTab.value && itemAny.category === 'video') {
     router.push({ name: 'video-detail', params: { id: item.id } })
     return
   }
 
-  // 2. 任何目录 —— 按当前激活的 Tab 进入对应的目录栈
+  // Novel file (not a directory)
+  if (isNovelTab.value && !item.is_dir) {
+    router.push({ name: 'novel-detail', params: { id: item.id } })
+    return
+  }
+
+  // Any directory — enter the correct dir stack
   if (item.is_dir) {
     if (isVideoTab.value) {
-      videoList.enterDir(item.id, (item as any).file_name || item.dir_name || '目录')
+      videoList.enterDir(item.id, itemAny.file_name || '目录')
+    } else if (isNovelTab.value) {
+      novelList.enterDir(item.id, itemAny.file_name || '目录')
     } else {
-      mediaList.enterDir(item.id, item.dir_name || (item as any).file_name || '目录')
+      mediaList.enterDir(item.id, item.dir_name || itemAny.file_name || '目录')
     }
     return
   }
 
-  // 3. 非视频的文件（漫画/小说详情）
-  if (!isVideoTab.value) {
+  // Non-video file (image/detail page)
+  if (!isVideoTab.value && !isNovelTab.value) {
     router.push({ name: 'detail', params: { id: item.id } })
   }
 }
@@ -132,6 +141,8 @@ function onCardClick(item: MediaItem) {
 function onSearch(kw: string) {
   if (isVideoTab.value) {
     videoList.search(kw)
+  } else if (isNovelTab.value) {
+    novelList.search(kw)
   } else {
     mediaList.search(kw)
   }
@@ -140,6 +151,8 @@ function onSearch(kw: string) {
 function onChangePage(p: number) {
   if (isVideoTab.value) {
     videoList.changePage(p)
+  } else if (isNovelTab.value) {
+    novelList.changePage(p)
   } else {
     mediaList.changePage(p)
   }
@@ -148,6 +161,8 @@ function onChangePage(p: number) {
 function onBackToDir(index: number) {
   if (isVideoTab.value) {
     videoList.backToDir(index)
+  } else if (isNovelTab.value) {
+    novelList.backToDir(index)
   } else {
     mediaList.backToDir(index)
   }

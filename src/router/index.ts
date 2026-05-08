@@ -18,6 +18,11 @@ const router = createRouter({
       name: 'video-detail',
       component: () => import('../views/VideoDetail.vue'),
     },
+    {
+      path: '/novel/:id',
+      name: 'novel-detail',
+      component: () => import('../views/NovelDetail.vue'),
+    },
   ],
 })
 

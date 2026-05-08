@@ -23,11 +23,15 @@ function isImageFolder(): boolean {
   return !!props.item.is_dir && (props.item as any).category === 'image_folder'
 }
 
+function isNovelItem(): boolean {
+  return !!props.item.is_dir === false && (props.item as any).media_type === 2
+}
+
 function getPreviewUrl(): string {
   if (props.item.is_dir && !isImageFolder()) {
     return ''
   }
-  if (isVideoItem() || isVideoDir()) {
+  if (isVideoItem() || isVideoDir() || isNovelItem()) {
     return ''
   }
   return getThumbnailUrl(props.item.id)
@@ -50,6 +54,14 @@ function onClick() {
       <div v-else-if="isVideoItem()" class="icon-placeholder video-icon">
         <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.4">
           <polygon points="5,3 19,12 5,21" fill="currentColor" />
+        </svg>
+      </div>
+      <div v-else-if="isNovelItem()" class="icon-placeholder">
+        <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.4">
+          <path d="M4 19.5A2.5 2.5 0 016.5 17H20" />
+          <path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z" />
+          <line x1="8" y1="7" x2="16" y2="7" />
+          <line x1="8" y1="11" x2="14" y2="11" />
         </svg>
       </div>
       <div v-else-if="item.is_dir && !isImageFolder()" class="icon-placeholder">

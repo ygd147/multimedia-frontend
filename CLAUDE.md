@@ -39,45 +39,54 @@ Vite proxy: /api -> http://192.168.1.100:8000
   - `fetchVideoDetail(id)`, `deleteVideo(id)`, `getVideoStreamUrl(id)`
   - Scan endpoints: `triggerScan()`, `fetchScanStatus()`
 
-### Three Composable Patterns (Not Yet Unified)
+### Three Composable Patterns
 
-- **`src/composables/useMediaList.ts`** — manages list state for the image tab only
+- **`src/composables/useMediaList.ts`** — list state for ComicExplorer (image tab)
   - States: `items`, `total`, `loading`, `page`, `perPage`, `keyword`, `parentId`, `dirStack`
   - Functions: `loadData()`, `search(kw)` (300ms debounce), `changePage(n)`, `enterDir(id, name)`, `backToDir(n)`
   - Takes `mediaType: Ref<MediaType | null>` param, re-fetches on type change
 
-- **`src/composables/useVideoList.ts`** — identical pattern using video API (no `media_type` param)
-- **`src/composables/useNovelList.ts`** — identical pattern using novel API
+- **`src/composables/useVideoList.ts`** — list state for VideoExplorer (video tab). Same pattern using video API.
+- **`src/composables/useNovelList.ts`** — list state for NovelExplorer (novel tab). Same pattern using novel API.
 - **`src/composables/useMediaDetail.ts`** — fetches detail by ID, polls every 3s while `status === 1` (Processing)
+
+Each tab explorer owns its composable instance. Composables are not shared across tabs.
 
 ### Routing (`src/router/index.ts`)
 
 ```
-/                  -> Home.vue       (tabs: 漫画/小说/视频, ?tab=N query param)
-/detail/:id        -> Detail.vue     (image/ZIP metadata + carousel)
-/video/:id         -> VideoDetail.vue (DPlayer video playback + episode list)
-/novel/:id         -> NovelDetail.vue (chapter sidebar + virtual-scroll reader)
+/                  -> Home.vue (layout shell)
+  children:
+    ''              -> ComicExplorer.vue    (image tab)
+    /novel          -> NovelExplorer.vue    (novel tab)
+    /video          -> VideoExplorer.vue    (video tab)
+/detail/:id        -> Detail.vue            (image/ZIP metadata + carousel)
+/video/:id         -> VideoDetail.vue       (DPlayer video playback + episode list)
+/novel/:id         -> NovelDetail.vue       (chapter list + reader)
 ```
 
-All routes are lazy-loaded. Tab state is persisted via `route.query.tab`.
+All routes are lazy-loaded. Tabs are decoupled as child routes under `/`. Each child component owns its composable and state. Search is communicated via `route.query.q` — each child watches it and calls its own composable's search. `<keep-alive>` in Home.vue preserves each tab's state (dirStack, page, etc.) across tab switches.
 
 ### Key Component Relationships
 
 ```
 App.vue
-  └── <router-view>
-        ├── Home.vue           — uses ALL THREE composables (media/video/novel), switches via computed
-        │     ├── SearchBar.vue
-        │     ├── MediaCard.vue  — handles video/image/novel/folder via `category`, `media_type`, `is_dir`
-        │     └── Pagination.vue
-        ├── Detail.vue         — uses useMediaDetail, conditionally renders:
-        │     ├── StatusBadge.vue
-        │     └── ImageCarousel.vue  — waterfall gallery + fullscreen preview lightbox
-        ├── VideoDetail.vue    — uses fetchVideoDetail, renders:
-        │     └── VideoPlayer.vue    — DPlayer wrapper (exposes switchVideo, loadSubtitle, toggleSubtitle)
-        └── NovelDetail.vue    — uses fetchChapters + fetchChapterContent, renders:
-              ├── chapter sidebar (scrollable list)
-              └── virtual-scroll reader (only visible lines in DOM, avoids OOM on huge content)
+  └── <keep-alive :include="['Home']">
+        └── <router-view>
+              ├── Home.vue                  — thin layout: header, SearchBar, tab bar
+              │     ├── SearchBar.vue       — emits search, Home updates route.query.q
+              │     └── <router-view>       — child tab content (also wrapped in <keep-alive>)
+              │           ├── ComicExplorer.vue  — useMediaList(MediaType.Image) + MediaCard grid
+              │           ├── NovelExplorer.vue  — useNovelList() + tree-style list
+              │           └── VideoExplorer.vue  — useVideoList() + MediaCard grid (with thumbnails)
+              ├── Detail.vue                — useMediaDetail, conditional render:
+              │     ├── StatusBadge.vue
+              │     └── ImageCarousel.vue   — waterfall gallery + fullscreen preview lightbox
+              ├── VideoDetail.vue           — fetchVideoDetail + tree-style episode list:
+              │     └── VideoPlayer.vue     — DPlayer wrapper (exposes switchVideo, loadSubtitle, toggleSubtitle)
+              └── NovelDetail.vue           — fetchChapters + fetchChapterContent, dual-mode:
+                    ├── chapter list view
+                    └── reader view (native scroll, settings panel)
 ```
 
 ### Directory Navigation Pattern

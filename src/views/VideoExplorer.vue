@@ -68,35 +68,59 @@ watch(
 function onCardClick(item: MediaItem) {
   const itemAny = item as any
 
+  // 跳转视频详情页
   if (itemAny.category === 'video' && !item.is_dir) {
     router.push({ name: 'video-detail', params: { id: item.id } })
     return
   }
 
+  // 进入子目录
   if (item.is_dir) {
-    videoList.dirStack.value = [...videoList.dirStack.value, { id: item.id, name: itemAny.file_name || '目录' }]
-    videoList.parentId.value = item.id
-    router.push({ query: { dir: String(item.id) } })
+    // 构建新的面包屑数据
+    const newStack = [...videoList.dirStack.value, { id: item.id, name: itemAny.file_name || '目录' }]
+    
+    router.push({
+      query: {
+        ...route.query,        // 【关键】保留现有的搜索词 q 等参数
+        dir: String(item.id),  // 更新目录 ID
+        page: '1'              // 进目录强制回到第1页
+      },
+      state: { dirStack: newStack } // 将面包屑藏在 history.state 中
+    })
   }
 }
 
 function onBackToDir(index: number) {
+  let targetDir: string | undefined = undefined
+  let newStack: { id: number; name: string }[] = []
+
   if (index < 0) {
-    videoList.dirStack.value = []
-    videoList.parentId.value = undefined
-    router.push({ query: {} })
+    targetDir = undefined
+    newStack = []
   } else {
-    const target = videoList.dirStack.value[index]
-    videoList.dirStack.value = videoList.dirStack.value.slice(0, index + 1)
-    videoList.parentId.value = target.id
-    router.push({ query: { dir: String(target.id) } })
+    newStack = videoList.dirStack.value.slice(0, index + 1)
+    targetDir = newStack[index].id.toString()
   }
+
+  // 【修改】面包屑回退使用 replace，避免回退后再点浏览器后退又回到当前页
+  router.replace({
+    query: {
+      ...route.query,
+      dir: targetDir,
+      page: '1'
+    },
+    state: { dirStack: newStack }
+  })
 }
 
 function onChangePage(p: number) {
-  videoList.page.value = p
-  router.replace({ query: { ...route.query, page: p > 1 ? String(p) : undefined } })
+  // 【修改】移除直接赋值 videoList.page.value = p (由 watch 统一处理)
+  // 【修改】翻页使用 push，保留翻页历史，允许逐页后退
+  router.push({ 
+    query: { ...route.query, page: p > 1 ? String(p) : undefined } 
+  })
 }
+
 </script>
 
 <template>

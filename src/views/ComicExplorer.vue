@@ -8,6 +8,7 @@ import type { MediaItem } from '../types/media'
 import { useMediaList } from '../composables/useMediaList'
 import MediaCard from '../components/MediaCard.vue'
 import Pagination from '../components/Pagination.vue'
+import { fetchMediaDetail } from '../api/media'
 
 const router = useRouter()
 const route = useRoute()
@@ -22,13 +23,18 @@ const page = computed(() => mediaList.page.value)
 const perPage = computed(() => mediaList.perPage.value)
 const dirStack = computed(() => mediaList.dirStack.value)
 
+/**
+ * 监听路由参数变化，同步到 composable 并加载数据。
+ * 注意：此处直接修改 composable 内部状态属于反模式，建议后续在 useMediaList 中暴露 setter 方法。
+ */
 watch(
   () => [route.query.dir, route.query.q, route.query.page] as const,
-  ([dir, q, page]) => {
+  async ([dir, q, page]) => {
     const newParentId = dir ? Number(dir) : undefined
     const newKeyword = (q as string) || ''
     const newPage = Number(page) || 1
 
+    // 同步 dirStack（简化处理，生产环境建议由 composable 维护）
     if (newParentId === undefined) {
       if (mediaList.dirStack.value.length > 0) {
         mediaList.dirStack.value = []
@@ -38,7 +44,9 @@ watch(
       if (idx >= 0) {
         mediaList.dirStack.value = mediaList.dirStack.value.slice(0, idx + 1)
       } else {
-        mediaList.dirStack.value = [{ id: newParentId, name: String(newParentId) }]
+        // 通过 URL 直接访问未知目录时，临时显示 ID，实际项目应请求后端获取名称
+        let dir_detial = await fetchMediaDetail(newParentId)
+        mediaList.dirStack.value = [{ id: newParentId, name: dir_detial.file_name }]
       }
     }
 
@@ -50,32 +58,63 @@ watch(
   { immediate: true }
 )
 
+/** 点击卡片：进入目录或打开详情 */
 function onCardClick(item: MediaItem) {
   if (item.is_dir) {
-    mediaList.dirStack.value = [...mediaList.dirStack.value, { id: item.id, name: item.dir_name || (item as any).file_name || '目录' }]
+    // 保留现有查询参数，仅更新 dir 并重置页码
+    mediaList.dirStack.value = [
+      ...mediaList.dirStack.value,
+      { id: item.id, name: item.dir_name || (item as any).file_name || '目录' }
+    ]
     mediaList.parentId.value = item.id
-    router.push({ query: { dir: String(item.id) } })
+    router.push({
+      query: {
+        ...route.query,
+        dir: String(item.id),
+        page: undefined   // 进入新目录重置页码
+      }
+    })
     return
   }
   router.push({ name: 'detail', params: { id: item.id } })
 }
 
+/** 面包屑导航：返回上级或根目录 */
 function onBackToDir(index: number) {
   if (index < 0) {
+    // 返回根目录，移除 dir 和 page，保留 q 等其他参数
     mediaList.dirStack.value = []
     mediaList.parentId.value = undefined
-    router.push({ query: {} })
+    router.push({
+      query: {
+        ...route.query,
+        dir: undefined,
+        page: undefined
+      }
+    })
   } else {
     const target = mediaList.dirStack.value[index]
     mediaList.dirStack.value = mediaList.dirStack.value.slice(0, index + 1)
     mediaList.parentId.value = target.id
-    router.push({ query: { dir: String(target.id) } })
+    router.push({
+      query: {
+        ...route.query,
+        dir: String(target.id),
+        page: undefined
+      }
+    })
   }
 }
 
+/** 分页切换 */
 function onChangePage(p: number) {
   mediaList.page.value = p
-  router.replace({ query: { ...route.query, page: p > 1 ? String(p) : undefined } })
+  router.replace({
+    query: {
+      ...route.query,
+      page: p > 1 ? String(p) : undefined
+    }
+  })
 }
 </script>
 

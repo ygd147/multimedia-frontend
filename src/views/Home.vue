@@ -33,13 +33,16 @@ function onTabClick(tab: typeof tabs[0]) {
   router.push(tab.path)
 }
 
-let searchTimer: ReturnType<typeof setTimeout> | null = null
+//let searchTimer: ReturnType<typeof setTimeout> | null = null
 
 function onSearch(kw: string) {
-  if (searchTimer) clearTimeout(searchTimer)
-  searchTimer = setTimeout(() => {
-    router.replace({ query: { q: kw || undefined } })
-  }, 300)
+  router.replace({ 
+      query: { 
+        ...route.query, // 保留 parentId 等现有参数
+        q: kw || undefined, 
+        page: '1' // 搜索时强制回到第1页
+      } 
+    })
 }
 </script>
 

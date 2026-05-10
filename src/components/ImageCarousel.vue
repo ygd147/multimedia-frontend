@@ -2,32 +2,25 @@
 import { ref, reactive, onMounted, onUnmounted } from 'vue'
 import type { ComicPage } from '../types/media'
 import { getImage } from '../api/media'
+import LazyImage from './LazyImage.vue' // 引入懒加载组件
 
 const props = defineProps<{
   mediaId: number
   children: ComicPage[]
 }>()
 
-// 调试：打印收到的数据
+// 调试日志保留
 onMounted(() => {
   console.log('[ImageCarousel] mediaId:', props.mediaId)
   console.log('[ImageCarousel] children length:', props.children.length)
   console.log('[ImageCarousel] first 3 children:', props.children.slice(0, 3))
 })
 
-// 图片加载失败占位
-function handleImageError(event: Event) {
-  const img = event.target as HTMLImageElement
-  img.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 24 24" fill="none" stroke="%23999" stroke-width="1"%3E%3Crect x="2" y="2" width="20" height="20" fill="%23f0f0f0"/%3E%3Cpath d="M8 10h8M12 6v8M8 14l4 4 4-4"/%3E%3C/svg%3E'
-  img.style.objectFit = 'contain'
-}
-
-// ==================== 预览灯箱逻辑 ====================
+// ---------- 原预览灯箱逻辑（完全不动） ----------
 const isPreviewOpen = ref(false)
 const currentPreviewUrl = ref('')
 const currentPreviewAlt = ref('')
 const previewContainer = ref<HTMLElement | null>(null)
-void previewContainer
 
 const transform = reactive({
   scale: 1,
@@ -96,7 +89,7 @@ function onMouseUp() {
   window.removeEventListener('mouseup', onMouseUp)
 }
 
-// 触摸事件（双指缩放 + 拖拽）
+// 触摸事件
 let touchStartDistance = 0
 let touchStartScale = 1
 let touchStartTranslateX = 0
@@ -180,18 +173,17 @@ onUnmounted(() => {
         :key="child.index"
         class="gallery-item"
       >
-        <img
+        <!-- ✅ 这里替换为 LazyImage，用法和原来的 <img> 几乎一样 -->
+        <LazyImage
           :src="getImage(mediaId, child.index)"
           :alt="child.file_name"
           class="gallery-image"
-          loading="lazy"
-          @error="handleImageError"
           @click="openPreview(getImage(mediaId, child.index), child.file_name)"
         />
       </div>
     </div>
 
-    <!-- 全屏预览灯箱 -->
+    <!-- 全屏预览灯箱（完全不变） -->
     <Teleport to="body">
       <div
         v-if="isPreviewOpen"
@@ -223,6 +215,7 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
+/* 原来的样式完全不动，LazyImage 内部的 img 已经带了 gallery-image class */
 .waterfall-gallery {
   width: 100%;
   max-width: 1000px;
@@ -273,7 +266,6 @@ onUnmounted(() => {
   color: #999;
 }
 
-/* 全屏预览灯箱 */
 .preview-overlay {
   position: fixed;
   top: 0;

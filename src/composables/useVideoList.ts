@@ -7,7 +7,7 @@ export function useVideoList() {
   const total = ref(0)
   const loading = ref(false)
   const page = ref(1)
-  const perPage = ref(20)
+  const perPage = ref(40)
   const keyword = ref('')
   const parentId = ref<number | undefined>(undefined)
   const dirStack = ref<{ id: number; name: string }[]>([])

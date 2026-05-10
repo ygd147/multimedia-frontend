@@ -22,6 +22,7 @@ export interface MediaItem {
   created_at: string
   is_dir?: number
   dir_name?: string
+  thumbnail?: string
 }
 
 export interface ImageMeta {

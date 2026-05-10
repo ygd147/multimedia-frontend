@@ -7,6 +7,7 @@ import type { MediaItem } from '../types/media'
 import { useVideoList } from '../composables/useVideoList'
 import MediaCard from '../components/MediaCard.vue'
 import Pagination from '../components/Pagination.vue'
+import { fetchVideoDetail } from '../api/video'
 
 const router = useRouter()
 const route = useRoute()
@@ -33,9 +34,36 @@ const page = computed(() => videoList.page.value)
 const perPage = computed(() => videoList.perPage.value)
 const dirStack = computed(() => videoList.dirStack.value)
 
-watch(() => route.query.q, (q) => {
-  videoList.search((q as string) || '')
-}, { immediate: true })
+watch(
+  () => [route.query.dir, route.query.q, route.query.page] as const,
+  async([dir, q, page]) => {
+    const newParentId = dir ? Number(dir) : undefined
+    const newKeyword = (q as string) || ''
+    const newPage = Number(page) || 1
+
+    if (newParentId === undefined) {
+      if (videoList.dirStack.value.length > 0) {
+        videoList.dirStack.value = []
+      }
+    } else if (newParentId !== videoList.parentId.value) {
+      const idx = videoList.dirStack.value.findIndex(d => d.id === newParentId)
+      if (idx >= 0) {
+        videoList.dirStack.value = videoList.dirStack.value.slice(0, idx + 1)
+      } else {
+        let  dir_detial
+        dir_detial = await fetchVideoDetail(newParentId)
+
+        videoList.dirStack.value = [{ id: newParentId, name: dir_detial.file_name }]
+      }
+    }
+
+    videoList.parentId.value = newParentId
+    videoList.keyword.value = newKeyword
+    videoList.page.value = newPage
+    videoList.loadData()
+  },
+  { immediate: true }
+)
 
 function onCardClick(item: MediaItem) {
   const itemAny = item as any
@@ -46,17 +74,28 @@ function onCardClick(item: MediaItem) {
   }
 
   if (item.is_dir) {
-    videoList.enterDir(item.id, itemAny.file_name || '目录')
-    return
+    videoList.dirStack.value = [...videoList.dirStack.value, { id: item.id, name: itemAny.file_name || '目录' }]
+    videoList.parentId.value = item.id
+    router.push({ query: { dir: String(item.id) } })
   }
 }
 
 function onBackToDir(index: number) {
-  videoList.backToDir(index)
+  if (index < 0) {
+    videoList.dirStack.value = []
+    videoList.parentId.value = undefined
+    router.push({ query: {} })
+  } else {
+    const target = videoList.dirStack.value[index]
+    videoList.dirStack.value = videoList.dirStack.value.slice(0, index + 1)
+    videoList.parentId.value = target.id
+    router.push({ query: { dir: String(target.id) } })
+  }
 }
 
 function onChangePage(p: number) {
-  videoList.changePage(p)
+  videoList.page.value = p
+  router.replace({ query: { ...route.query, page: p > 1 ? String(p) : undefined } })
 }
 </script>
 

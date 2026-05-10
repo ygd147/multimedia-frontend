@@ -2,7 +2,7 @@ import { createRouter, createWebHashHistory } from 'vue-router'
 
 const router = createRouter({
   history: createWebHashHistory(),
-  scrollBehavior(to, from, savedPosition) {
+  scrollBehavior(to, _from, savedPosition) {
     // 这应该解决后退问题
     if (to.hash) {
       return { el: to.hash }
@@ -15,9 +15,10 @@ const router = createRouter({
   routes: [
     {
       path: '/',
+      redirect: '/comic',
       component: () => import('../views/Home.vue'),
       children: [
-        { path: '', name: 'comic', component: () => import('../views/ComicExplorer.vue') },
+        { path: 'comic', name: 'comic', component: () => import('../views/ComicExplorer.vue') },
         { path: 'novel', name: 'novel', component: () => import('../components/NovelExplorer.vue') },
         { path: 'video', name: 'video', component: () => import('../views/VideoExplorer.vue') },
       ],

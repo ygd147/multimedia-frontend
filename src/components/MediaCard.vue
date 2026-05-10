@@ -52,7 +52,7 @@ function onClick() {
         loading="lazy"
       />
       <img
-        v-if="isVideoItem()"
+        v-if="isVideoItem() && item.thumbnail"
         :src="item.thumbnail"
         :alt="item.file_name"
         loading="lazy"

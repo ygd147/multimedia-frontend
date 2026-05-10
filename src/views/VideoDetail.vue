@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch, onMounted, computed, type Ref } from 'vue'
+import { ref, watch, onMounted, computed, nextTick, type Ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import type { VideoItem } from '../types/video'
 import { fetchVideoDetail, fetchVideoList, getVideoStreamUrl } from '../api/video'
@@ -19,7 +19,6 @@ const loading = ref(false)
 const error = ref('')
 
 // ===== 树形结构相关 =====
-// 直接继承 VideoItem，不再覆盖 is_dir 的类型
 interface TreeNode extends VideoItem {
   level: number
   expanded: boolean
@@ -30,14 +29,12 @@ interface TreeNode extends VideoItem {
 const treeData = ref<TreeNode[]>([])
 const treeLoading = ref(false)
 
-// 统一判断是否为目录，并强制转为 0 | 1 兼容 VideoItem
 function normalizeIsDir(item: VideoItem): 0 | 1 {
   if (item.is_dir === 1 ) return 1
   if (item.file_size == null || item.file_size === 0) return 1
   return 0
 }
 
-// 获取缩略图 URL
 function getVideoThumbnailUrl(item: any): string {
   if (item.thumbnail_url) return item.thumbnail_url
   if (item.thumbnail) return item.thumbnail
@@ -73,7 +70,7 @@ async function loadTreeNodes(parentId: number, target: Ref<TreeNode[]> | TreeNod
     
     const nodes = items.map(item => ({
       ...item,
-      is_dir: normalizeIsDir(item), // 保持 0 | 1 类型
+      is_dir: normalizeIsDir(item),
       level: 0,
       expanded: false,
       children: [] as TreeNode[],
@@ -92,14 +89,16 @@ async function loadTreeNodes(parentId: number, target: Ref<TreeNode[]> | TreeNod
   }
 }
 
-// 扁平化可见节点
+// 扁平化可见节点（仅视频文件，排除目录）
 const visibleEpisodes = computed(() => {
   const result: TreeNode[] = []
   function walk(nodes: TreeNode[], level: number) {
     for (const node of nodes) {
       node.level = level
-      result.push(node)
-      // is_dir 为 1 时展开子级
+      if (!node.is_dir) {
+        result.push(node)
+      }
+      // 目录展开时继续深入子级（子级中的视频文件也会被收集）
       if (node.is_dir && node.expanded && node.children.length > 0) {
         walk(node.children, level + 1)
       }
@@ -109,7 +108,11 @@ const visibleEpisodes = computed(() => {
   return result
 })
 
-// 交互：点击节点
+// 当前播放项在可见剧集列表中的索引
+const currentIndex = computed(() => {
+  return visibleEpisodes.value.findIndex(ep => ep.id === playingId.value)
+})
+
 async function toggleNode(node: TreeNode) {
   if (!node.is_dir) {
     switchEpisode(node)
@@ -140,8 +143,8 @@ async function toggleNode(node: TreeNode) {
   }
 }
 
-// 无缝切换
-function switchEpisode(episode: TreeNode) {
+// 切换剧集
+async function switchEpisode(episode: TreeNode) {
   if (episode.id === playingId.value) return
 
   playingId.value = episode.id
@@ -154,6 +157,41 @@ function switchEpisode(episode: TreeNode) {
 
   window.history.replaceState({}, '', `/video/${episode.id}`)
   window.scrollTo({ top: 0, behavior: 'smooth' })
+  
+  // 滚动剧集列表到当前项中部
+  await nextTick()
+  scrollToActive()
+}
+
+/** 滚动剧集列表，使当前项居中 */
+function scrollToActive() {
+  const activeEl = document.querySelector('.episode-item.active')
+  if (activeEl) {
+    activeEl.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }
+}
+
+// ============ 按钮控制方法 ============
+function prevEpisode() {
+  const idx = currentIndex.value
+  if (idx > 0) {
+    switchEpisode(visibleEpisodes.value[idx - 1])
+  }
+}
+
+function nextEpisode() {
+  const idx = currentIndex.value
+  if (idx < visibleEpisodes.value.length - 1) {
+    switchEpisode(visibleEpisodes.value[idx + 1])
+  }
+}
+
+function skipBackward() {
+  playerComponent.value?.seekBy(-5)
+}
+
+function skipForward() {
+  playerComponent.value?.seekBy(5)
 }
 
 watch(currentRouteId, (newId) => {
@@ -207,8 +245,47 @@ function goBack() {
         :autoplay="true"
       />
 
+      <!-- 替换后的控制按钮区域 -->
       <div class="video-actions">
-        <span class="hint">支持键盘快捷键：方向键快进/快退，空格暂停/播放</span>
+        <button 
+          class="ctrl-btn" 
+          :disabled="currentIndex <= 0"
+          @click="prevEpisode"
+          title="上一集"
+        >
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M19 20L9 12l10-8v16zM5 19V5" />
+          </svg>
+          <span>上一集</span>
+        </button>
+
+        <button class="ctrl-btn" @click="skipBackward" title="后退 5 秒">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M1 4v6h6" />
+            <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
+          </svg>
+          <span>-5秒</span>
+        </button>
+
+        <button class="ctrl-btn" @click="skipForward" title="前进 5 秒">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M23 4v6h-6" />
+            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+          </svg>
+          <span>+5秒</span>
+        </button>
+
+        <button 
+          class="ctrl-btn" 
+          :disabled="currentIndex >= visibleEpisodes.length - 1"
+          @click="nextEpisode"
+          title="下一集"
+        >
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M5 4l10 8-10 8V4zM19 5v14" />
+          </svg>
+          <span>下一集</span>
+        </button>
       </div>
 
       <div v-if="treeData.length > 0" class="episodes-section">
@@ -219,6 +296,7 @@ function goBack() {
         
         <div v-if="treeLoading && treeData.length === 0" class="episodes-loading">加载列表中...</div>
         
+        <!-- 剧集列表（自动滚动至当前项） -->
         <div v-else class="episode-list">
           <div
             v-for="node in visibleEpisodes"
@@ -231,7 +309,7 @@ function goBack() {
             :style="{ paddingLeft: (16 + node.level * 24) + 'px' }"
             @click="toggleNode(node)"
           >
-            <!-- 目录状态 -->
+            <!-- 目录状态（仅目录有） -->
             <template v-if="node.is_dir">
               <svg v-if="node.isLoading" class="dir-icon loading-spin" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M12 2v4m0 12v4m-7.07-3.93l2.83-2.83m8.48-8.48l2.83-2.83M2 12h4m12 0h4M4.93 4.93l2.83 2.83m8.48 8.48l2.83 2.83" />
@@ -245,7 +323,7 @@ function goBack() {
               <span class="item-name">{{ node.file_name }}</span>
             </template>
             
-            <!-- 视频文件状态 (带缩略图) -->
+            <!-- 视频文件状态 -->
             <template v-else>
               <div class="thumb-wrapper">
                 <img 
@@ -305,12 +383,48 @@ function goBack() {
 
 .video-meta { display: flex; gap: 16px; font-size: 13px; color: var(--text-muted); }
 
-.video-actions { margin-top: 12px; text-align: center; }
-.hint { font-size: 12px; color: var(--text-muted); }
+/* ============ 控制按钮区域 ============ */
+.video-actions {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 16px;
+  flex-wrap: wrap;
+}
 
-/* ===== 树形剧集列表样式 ===== */
+.ctrl-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.ctrl-btn:hover:not(:disabled) {
+  background: var(--accent-bg);
+  border-color: var(--accent);
+}
+
+.ctrl-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.ctrl-btn svg {
+  flex-shrink: 0;
+}
+
+/* ============ 剧集列表 ============ */
 .episodes-section {
-  margin-top: 24px; border-top: 1px solid var(--border); padding-top: 20px;
+  margin-top: 24px;
+  border-top: 1px solid var(--border);
+  padding-top: 20px;
 }
 
 .section-title {
@@ -321,7 +435,12 @@ function goBack() {
 .episodes-loading { font-size: 13px; color: var(--text-muted); padding: 12px 0; }
 
 .episode-list {
-  display: flex; flex-direction: column; gap: 6px; max-height: 600px; overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 600px;
+  overflow-y: auto;
+  scroll-behavior: smooth; /* 顺滑滚动 */
 }
 
 .episode-item {
@@ -339,15 +458,13 @@ function goBack() {
 }
 .episode-item.active .item-size { color: rgba(255, 255, 255, 0.8); }
 
-/* 目录专属 */
 .dir-icon { flex-shrink: 0; transition: transform 0.2s ease; color: var(--text-muted); }
 .dir-icon.rotate-90 { transform: rotate(90deg); }
 .folder-icon { flex-shrink: 0; color: var(--accent); }
 .loading-spin { animation: spin 1s linear infinite; }
 
-/* 缩略图与视频信息 */
 .thumb-wrapper {
-  position: relative; width: 80px; height: 45px; /* 16:9 比例 */
+  position: relative; width: 80px; height: 45px;
   background: #000; border-radius: 4px; flex-shrink: 0;
   overflow: hidden; display: flex; align-items: center; justify-content: center;
 }
@@ -378,5 +495,6 @@ function goBack() {
   .video-title { font-size: 16px; }
   .episode-item { padding: 8px 12px; }
   .thumb-wrapper { width: 64px; height: 36px; }
+  .ctrl-btn { padding: 6px 12px; font-size: 13px; }
 }
 </style>

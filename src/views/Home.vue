@@ -10,7 +10,7 @@ const router = useRouter()
 const route = useRoute()
 
 const tabs = [
-  { label: '漫画', value: MediaType.Image, path: '/' },
+  { label: '漫画', value: MediaType.Image, path: '/comic' },
   { label: '小说', value: MediaType.Novel, path: '/novel' },
   { label: '视频', value: MediaType.Video, path: '/video' },
 ]
@@ -33,8 +33,13 @@ function onTabClick(tab: typeof tabs[0]) {
   router.push(tab.path)
 }
 
+let searchTimer: ReturnType<typeof setTimeout> | null = null
+
 function onSearch(kw: string) {
-  router.replace({ query: { ...route.query, q: kw || undefined } })
+  if (searchTimer) clearTimeout(searchTimer)
+  searchTimer = setTimeout(() => {
+    router.replace({ query: { q: kw || undefined } })
+  }, 300)
 }
 </script>
 

@@ -19,24 +19,60 @@ const page = computed(() => novelList.page.value)
 const perPage = computed(() => novelList.perPage.value)
 const dirStack = computed(() => novelList.dirStack.value)
 
-watch(() => route.query.q, (q) => {
-  novelList.search((q as string) || '')
-}, { immediate: true })
+watch(
+  () => [route.query.dir, route.query.q, route.query.page] as const,
+  ([dir, q, page]) => {
+    const newParentId = dir ? Number(dir) : undefined
+    const newKeyword = (q as string) || ''
+    const newPage = Number(page) || 1
+
+    if (newParentId === undefined) {
+      if (novelList.dirStack.value.length > 0) {
+        novelList.dirStack.value = []
+      }
+    } else if (newParentId !== novelList.parentId.value) {
+      const idx = novelList.dirStack.value.findIndex(d => d.id === newParentId)
+      if (idx >= 0) {
+        novelList.dirStack.value = novelList.dirStack.value.slice(0, idx + 1)
+      } else {
+        novelList.dirStack.value = [{ id: newParentId, name: String(newParentId) }]
+      }
+    }
+
+    novelList.parentId.value = newParentId
+    novelList.keyword.value = newKeyword
+    novelList.page.value = newPage
+    novelList.loadData()
+  },
+  { immediate: true }
+)
 
 function handleClick(item: any) {
   if (item.is_dir) {
-    novelList.enterDir(item.id, item.file_name || '目录')
+    novelList.dirStack.value = [...novelList.dirStack.value, { id: item.id, name: item.file_name || '目录' }]
+    novelList.parentId.value = item.id
+    router.push({ query: { dir: String(item.id) } })
   } else {
     router.push({ name: 'novel-detail', params: { id: item.id } })
   }
 }
 
 function onBackToDir(index: number) {
-  novelList.backToDir(index)
+  if (index < 0) {
+    novelList.dirStack.value = []
+    novelList.parentId.value = undefined
+    router.push({ query: {} })
+  } else {
+    const target = novelList.dirStack.value[index]
+    novelList.dirStack.value = novelList.dirStack.value.slice(0, index + 1)
+    novelList.parentId.value = target.id
+    router.push({ query: { dir: String(target.id) } })
+  }
 }
 
 function onChangePage(p: number) {
-  novelList.changePage(p)
+  novelList.page.value = p
+  router.replace({ query: { ...route.query, page: p > 1 ? String(p) : undefined } })
 }
 </script>
 

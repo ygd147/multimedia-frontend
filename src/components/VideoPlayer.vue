@@ -11,9 +11,7 @@ const props = defineProps<{
 const containerRef = ref<HTMLElement | null>(null)
 let dp: DPlayer | null = null
 
-// 控制字幕按钮的状态
 const subtitleActive = ref(false)
-// 内部记录当前实际播放的视频地址（避免依赖不安全的 dp.options）
 const currentVideoUrl = ref(props.url)
 
 function initPlayer() {
@@ -43,10 +41,7 @@ function initPlayer() {
     }
   })
 
-  // 同步内部记录的视频地址
   currentVideoUrl.value = props.url
-
-  // 监听 DPlayer 内部字幕显隐事件（使用 any 绕过类型声明不完整）
   ;(dp as any).on('subtitle_show', () => { subtitleActive.value = true })
   ;(dp as any).on('subtitle_hide', () => { subtitleActive.value = false })
 }
@@ -59,7 +54,6 @@ function destroyPlayer() {
   }
 }
 
-// 监听 props.url 变化时，彻底销毁重建（适用于跨类型/跨页面刷新）
 watch(() => props.url, () => {
   destroyPlayer()
   initPlayer()
@@ -68,20 +62,14 @@ watch(() => props.url, () => {
 onMounted(() => initPlayer())
 onUnmounted(() => destroyPlayer())
 
-// ==========================================
-// 暴露给父组件的操作接口
-// ==========================================
-
-/** 1. 无缝切换视频源（不销毁播放器实例，保留音量等状态） */
+// ============ 暴露给父组件的方法 ============
 function switchVideo(newUrl: string) {
   if (!dp) return
-  // 通过 any 调用以兼容类型定义对第二参数的要求
   ;(dp as any).switchVideo({ url: newUrl })
   dp.play()
   currentVideoUrl.value = newUrl
 }
 
-/** 2. 动态加载/切换字幕文件 */
 function loadSubtitle(subUrl: string) {
   if (!dp) return
   const currentTime = dp.video.currentTime
@@ -100,17 +88,23 @@ function loadSubtitle(subUrl: string) {
   subtitleActive.value = true
 }
 
-/** 3. 切换字幕显示/隐藏状态 */
 function toggleSubtitle() {
   if (!dp) return
   ;(dp as any).subtitle.toggle()
 }
 
-// 暴露出去
+/** 新增：快进/快退秒数（正数前进，负数后退） */
+function seekBy(seconds: number) {
+  if (!dp) return
+  const newTime = Math.max(0, dp.video.currentTime + seconds)
+  dp.seek(newTime)
+}
+
 defineExpose({
   switchVideo,
   loadSubtitle,
-  toggleSubtitle
+  toggleSubtitle,
+  seekBy
 })
 </script>
 
@@ -142,7 +136,6 @@ defineExpose({
   background: #000;
 }
 
-/* 修复点：去掉 height 和 padding-bottom，直接用 aspect-ratio 锁定 16:9 */
 .dplayer-container {
   position: relative;
   width: 100%;
@@ -150,7 +143,6 @@ defineExpose({
   background: #000;
 }
 
-/* 修复点：加上 !important 强制覆盖 DPlayer 可能通过 JS 注入的内联错误样式 */
 .dplayer-container :deep(.dplayer) {
   position: absolute;
   top: 0;

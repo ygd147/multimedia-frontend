@@ -55,17 +55,32 @@ Each tab explorer owns its composable instance. Composables are not shared acros
 ### Routing (`src/router/index.ts`)
 
 ```
-/                  -> Home.vue (layout shell)
+/ (redirects to /comic)   -> Home.vue (layout shell)
   children:
-    ''              -> ComicExplorer.vue    (image tab)
-    /novel          -> NovelExplorer.vue    (novel tab)
-    /video          -> VideoExplorer.vue    (video tab)
-/detail/:id        -> Detail.vue            (image/ZIP metadata + carousel)
-/video/:id         -> VideoDetail.vue       (DPlayer video playback + episode list)
-/novel/:id         -> NovelDetail.vue       (chapter list + reader)
+    /comic                 -> ComicExplorer.vue    (image tab)
+    /novel                 -> NovelExplorer.vue    (novel tab)
+    /video                 -> VideoExplorer.vue    (video tab)
+/detail/:id                -> Detail.vue            (image/ZIP metadata + carousel)
+/video/:id                 -> VideoDetail.vue       (DPlayer video playback + episode list)
+/novel/:id                 -> NovelDetail.vue       (chapter list + reader)
 ```
 
-All routes are lazy-loaded. Tabs are decoupled as child routes under `/`. Each child component owns its composable and state. Search is communicated via `route.query.q` — each child watches it and calls its own composable's search. `<keep-alive>` in Home.vue preserves each tab's state (dirStack, page, etc.) across tab switches.
+All routes are lazy-loaded. Tabs are decoupled as child routes under `/`. The root `/` redirects to `/comic` as default tab. List routes use plain paths without dynamic segments — this avoids ambiguity between `/video/77` (list directory) and `/video/77` (detail page), which Vue Router cannot distinguish if both use `:id`-style params at overlapping paths.
+
+### State Management
+
+Directory navigation (parentId, dirStack), pagination (page), and search (keyword) are managed internally by each tab's composable. Only the **search query** is synced to the URL via `route.query.q` (for shareability). All other state is composable-private and survives tab switches via `<keep-alive>`.
+
+| What | Where | Why |
+|------|-------|-----|
+| Search query (`q`) | `route.query.q` | Shareable URL, browser back |
+| Directory (`parentId`) | Composable ref | Avoids path ambiguity with detail routes |
+| Breadcrumb (`dirStack`) | Composable ref | UI-only, no need in URL |
+| Page (`page`) | Composable ref | Transient, not worth URL clutter |
+
+**Initial load:** `onMounted` calls `loadData()` directly (no debounce).
+**Search:** `watch(() => route.query.q)` calls composable's `search(kw)` (300ms debounce inside composable).
+**Directory navigation / pagination:** Call composable methods directly (`enterDir`, `backToDir`, `changePage`). No URL changes.
 
 ### Key Component Relationships
 
@@ -74,11 +89,11 @@ App.vue
   └── <keep-alive :include="['Home']">
         └── <router-view>
               ├── Home.vue                  — thin layout: header, SearchBar, tab bar
-              │     ├── SearchBar.vue       — emits search, Home updates route.query.q
-              │     └── <router-view>       — child tab content (also wrapped in <keep-alive>)
-              │           ├── ComicExplorer.vue  — useMediaList(MediaType.Image) + MediaCard grid
-              │           ├── NovelExplorer.vue  — useNovelList() + tree-style list
-              │           └── VideoExplorer.vue  — useVideoList() + MediaCard grid (with thumbnails)
+              │     ├── SearchBar.vue       — emits search, Home calls router.replace({ query: { q, page: '1' } })
+              │     └── <router-view>       — child tab content (wrapped in <keep-alive>)
+              │           ├── ComicExplorer.vue  — watches route → syncs useMediaList(MediaType.Image)
+              │           ├── NovelExplorer.vue  — watches route → syncs useNovelList()
+              │           └── VideoExplorer.vue  — watches route → syncs useVideoList(), adds video thumbnails
               ├── Detail.vue                — useMediaDetail, conditional render:
               │     ├── StatusBadge.vue
               │     └── ImageCarousel.vue   — waterfall gallery + fullscreen preview lightbox
@@ -87,14 +102,6 @@ App.vue
               └── NovelDetail.vue           — fetchChapters + fetchChapterContent, dual-mode:
                     ├── chapter list view
                     └── reader view (native scroll, settings panel)
-```
-
-### Directory Navigation Pattern
-
-List views use lazy-load directory tree via `parent_id`. A `dirStack` array acts as breadcrumb:
-
-```
-Root -> enterDir(1, "folder") -> enterDir(2, "subfolder") -> backToDir(0) -> backToDir(-1)
 ```
 
 ### Status Polling Pattern

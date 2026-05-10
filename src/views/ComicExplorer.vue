@@ -22,24 +22,60 @@ const page = computed(() => mediaList.page.value)
 const perPage = computed(() => mediaList.perPage.value)
 const dirStack = computed(() => mediaList.dirStack.value)
 
-watch(() => route.query.q, (q) => {
-  mediaList.search((q as string) || '')
-}, { immediate: true })
+watch(
+  () => [route.query.dir, route.query.q, route.query.page] as const,
+  ([dir, q, page]) => {
+    const newParentId = dir ? Number(dir) : undefined
+    const newKeyword = (q as string) || ''
+    const newPage = Number(page) || 1
+
+    if (newParentId === undefined) {
+      if (mediaList.dirStack.value.length > 0) {
+        mediaList.dirStack.value = []
+      }
+    } else if (newParentId !== mediaList.parentId.value) {
+      const idx = mediaList.dirStack.value.findIndex(d => d.id === newParentId)
+      if (idx >= 0) {
+        mediaList.dirStack.value = mediaList.dirStack.value.slice(0, idx + 1)
+      } else {
+        mediaList.dirStack.value = [{ id: newParentId, name: String(newParentId) }]
+      }
+    }
+
+    mediaList.parentId.value = newParentId
+    mediaList.keyword.value = newKeyword
+    mediaList.page.value = newPage
+    mediaList.loadData()
+  },
+  { immediate: true }
+)
 
 function onCardClick(item: MediaItem) {
   if (item.is_dir) {
-    mediaList.enterDir(item.id, item.dir_name || (item as any).file_name || '目录')
+    mediaList.dirStack.value = [...mediaList.dirStack.value, { id: item.id, name: item.dir_name || (item as any).file_name || '目录' }]
+    mediaList.parentId.value = item.id
+    router.push({ query: { dir: String(item.id) } })
     return
   }
   router.push({ name: 'detail', params: { id: item.id } })
 }
 
 function onBackToDir(index: number) {
-  mediaList.backToDir(index)
+  if (index < 0) {
+    mediaList.dirStack.value = []
+    mediaList.parentId.value = undefined
+    router.push({ query: {} })
+  } else {
+    const target = mediaList.dirStack.value[index]
+    mediaList.dirStack.value = mediaList.dirStack.value.slice(0, index + 1)
+    mediaList.parentId.value = target.id
+    router.push({ query: { dir: String(target.id) } })
+  }
 }
 
 function onChangePage(p: number) {
-  mediaList.changePage(p)
+  mediaList.page.value = p
+  router.replace({ query: { ...route.query, page: p > 1 ? String(p) : undefined } })
 }
 </script>
 

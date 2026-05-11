@@ -20,7 +20,7 @@ onMounted(() => {
 const isPreviewOpen = ref(false)
 const currentPreviewUrl = ref('')
 const currentPreviewAlt = ref('')
-const previewContainer = ref<HTMLElement | null>(null)
+//const previewContainer = ref<HTMLElement | null>(null)
 
 const transform = reactive({
   scale: 1,

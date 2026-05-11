@@ -60,7 +60,7 @@ watch(
 
 /** 点击卡片：进入目录或打开详情 */
 function onCardClick(item: MediaItem) {
-  if (item.is_dir) {
+  if (item.is_dir && item.category != 'image_folder') {
     // 保留现有查询参数，仅更新 dir 并重置页码
     mediaList.dirStack.value = [
       ...mediaList.dirStack.value,

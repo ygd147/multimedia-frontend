@@ -47,3 +47,8 @@ export function getStreamUrl(id: number): string {
 export function getChapterUrl(id: number, chapterIndex: number): string {
   return `/api/media/${id}/chapter/${chapterIndex}`
 }
+
+export async function triggerScan(): Promise<{ message: string }> {
+  const { data } = await http.post<ApiResponse<{ message: string }>>('/media/scan/trigger')
+  return data.data
+}

@@ -5,9 +5,12 @@ import { ref, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { MediaType } from '../types/media'
 import SearchBar from '../components/SearchBar.vue'
+import UploadModal from '../components/UploadModal.vue' // 引入弹窗
+import { useActions } from '../composables/useActions'
 
 const router = useRouter()
 const route = useRoute()
+const { scanning, scan } = useActions()
 
 const tabs = [
   { label: '漫画', value: MediaType.Image, path: '/comic' },
@@ -33,16 +36,28 @@ function onTabClick(tab: typeof tabs[0]) {
   router.push(tab.path)
 }
 
-//let searchTimer: ReturnType<typeof setTimeout> | null = null
-
 function onSearch(kw: string) {
   router.replace({ 
-      query: { 
-        ...route.query, // 保留 parentId 等现有参数
-        q: kw || undefined, 
-        page: '1' // 搜索时强制回到第1页
-      } 
-    })
+    query: { 
+      ...route.query,
+      q: kw || undefined, 
+      page: '1'
+    } 
+  })
+}
+
+// ---------- 操作相关 ----------
+function onScan() {
+  scan(activeTab.value)
+}
+
+// 弹窗控制
+const showUploadModal = ref(false)
+
+function onUploaded() {
+  // 上传完成后，可以触发页面刷新或者提示
+  // 简单的做法是强行刷新当前路由组件
+  router.replace({ query: { ...route.query, t: Date.now() } })
 }
 </script>
 
@@ -50,7 +65,25 @@ function onSearch(kw: string) {
   <div class="home">
     <header class="home-header">
       <h1 class="app-title">多媒体资源管理</h1>
-      <SearchBar @search="onSearch" />
+      
+      <SearchBar @search="onSearch" class="header-search" />
+      
+      <div class="header-actions">
+        <button 
+          class="ghost-btn" 
+          :disabled="scanning" 
+          @click="onScan"
+          title="扫描媒体库"
+        >
+          <span v-if="!scanning">扫描</span>
+          <span v-else class="mini-spinner"></span>
+        </button>
+        
+        <!-- 点击打开弹窗 -->
+        <button class="ghost-btn" @click="showUploadModal = true" title="上传文件">
+          上传
+        </button>
+      </div>
     </header>
 
     <nav class="tab-bar">
@@ -70,10 +103,19 @@ function onSearch(kw: string) {
         <component :is="Component" />
       </keep-alive>
     </router-view>
+
+    <!-- 上传弹窗 -->
+    <UploadModal 
+      :visible="showUploadModal" 
+      :mediaType="activeTab" 
+      @close="showUploadModal = false"
+      @uploaded="onUploaded"
+    />
   </div>
 </template>
 
 <style scoped>
+/* 样式保持之前修改的样式不变 */
 .home {
   max-width: 1200px;
   margin: 0 auto;
@@ -93,6 +135,65 @@ function onSearch(kw: string) {
   color: var(--text-h);
   margin: 0;
   white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.header-search {
+  flex: 0 1 320px; 
+}
+
+.header-actions {
+  margin-left: auto; 
+  display: flex;
+  align-items: center;
+  gap: 8px; 
+  flex-shrink: 0;
+}
+
+.ghost-btn {
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 16px; 
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.2s; 
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 32px; 
+  box-sizing: border-box;
+}
+
+.ghost-btn:hover:not(:disabled) {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--accent-bg, rgba(0,0,0,0.02)); 
+}
+
+.ghost-btn:active:not(:disabled) {
+  transform: scale(0.97); 
+}
+
+.ghost-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.mini-spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }
 
 .tab-bar {
@@ -130,9 +231,17 @@ function onSearch(kw: string) {
   }
 
   .home-header {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .header-search {
+    order: 3; 
+    flex: 1 1 100%;
+    margin-top: 8px;
+  }
+
+  .header-actions {
+    order: 2; 
   }
 
   .tab-btn {

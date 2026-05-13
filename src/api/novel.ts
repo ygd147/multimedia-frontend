@@ -32,3 +32,8 @@ export async function fetchChapterContent(chapterId: number): Promise<NovelConte
 export async function deleteNovel(novelId: number): Promise<void> {
   await http.delete(`/${novelId}`)
 }
+
+export async function triggerScan(): Promise<{ message: string }> {
+  const { data } = await http.post<NovelApiResponse<{ message: string }>>('/scan/trigger')
+  return data.data
+}

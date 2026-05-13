@@ -38,8 +38,8 @@ export function useActions() {
     loadingDirs.value = true
     directories.value = []
     try {
-      // 获取根目录下的文件 parent_id 传 undefined 或不传
-      const res = await fetchMediaList({ media_type: type, parent_id: undefined })
+      // 传给后端的 parent_id 应该是不传(undefined)，而不是传一个字符串 "undefined"
+      const res = await fetchMediaList({ media_type: type })
       // 筛选出是目录的项 (兼容 is_dir 和 category 两种判断)
       directories.value = res.items.filter(item => item.is_dir === 1 || item.category === 'directory')
     } catch (err) {
@@ -50,7 +50,7 @@ export function useActions() {
   }
 
   // 增加 parentId 参数
-  const upload = async (type: MediaType, files: File[], parentId: number | null = null) => {
+  const upload = async (type: MediaType, files: File[], parentId?: number | null) => {
     if (uploading.value || files.length === 0) return
     uploading.value = true
 
@@ -58,10 +58,13 @@ export function useActions() {
       const formData = new FormData()
       files.forEach(file => formData.append('files', file))
       
-      // 如果有目标目录，加入 parent_id 字段 (具体字段名看后端要求，通常是 parent_id 或 directory_id)
-      if (parentId !== null) {
+      // 【修复点】：必须同时判断 null 和 undefined
+      // 在 JS 中，使用 != null 可以同时过滤掉 null 和 undefined
+      if (parentId != null) {
         formData.append('parent_id', String(parentId))
       }
+      // 如果 parentId 是 null 或 undefined，则不 append 该字段
+      // 后端 request.form.get('parent_id') 就会得到 None，符合预期
 
       const typeMap = {
         [MediaType.Image]: 'media',

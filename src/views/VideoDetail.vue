@@ -421,12 +421,6 @@ function goBack() {
 }
 
 /* ============ 剧集列表 ============ */
-.episodes-section {
-  margin-top: 24px;
-  border-top: 1px solid var(--border);
-  padding-top: 20px;
-}
-
 .section-title {
   font-size: 16px; font-weight: 600; margin: 0 0 12px; color: var(--text-h);
 }
@@ -438,9 +432,21 @@ function goBack() {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  max-height: 600px;
+  max-height: 30vh; /* 【修改点】限制最大高度为视口高度的 60%，确保不超出一屏 */
   overflow-y: auto;
   scroll-behavior: smooth; /* 顺滑滚动 */
+}
+
+/* 移动端可以稍微缩小一点比例 */
+@media (max-width: 420px) {
+  .video-detail { padding: 8px; }
+  .video-title { font-size: 16px; }
+  .episode-item { padding: 8px 12px; }
+  .thumb-wrapper { width: 64px; height: 36px; }
+  .ctrl-btn { padding: 6px 12px; font-size: 13px; }
+  .episode-list {
+    max-height: 50vh; /* 移动端限制为 50% */
+  }
 }
 
 .episode-item {

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import type { NovelChapter, NovelContent } from '../types/novel'
 import { fetchChapters, fetchChapterContent } from '../api/novel'
@@ -8,7 +8,6 @@ const route = useRoute()
 const router = useRouter()
 const novelId = Number(route.params.id)
 
-// ===== Reader settings =====
 interface ReaderSettings {
   fontSize: number
   lineHeight: number
@@ -80,7 +79,6 @@ const textPresets = [
   { label: '浅灰', color: '#666' },
 ]
 
-// ===== State =====
 const chapters = ref<NovelChapter[]>([])
 const chaptersLoading = ref(false)
 const currentChapter = ref<NovelContent | null>(null)
@@ -88,8 +86,8 @@ const contentLoading = ref(false)
 const error = ref('')
 const mode = ref<'list' | 'reader'>('list')
 const showSettings = ref(false)
+const lastReadChapterId = ref<number | null>(null)
 
-// ===== Chapter list =====
 async function loadChapters() {
   chaptersLoading.value = true
   try {
@@ -101,22 +99,35 @@ async function loadChapters() {
   }
 }
 
-// ===== Chapter content =====
-async function loadChapter(chapterId: number) {
+async function loadChapter(chapterId: number, updateUrl = true) {
   contentLoading.value = true
   error.value = ''
   try {
     currentChapter.value = await fetchChapterContent(chapterId)
     mode.value = 'reader'
     showSettings.value = false
-    // 切换章节后回到顶部
+    lastReadChapterId.value = chapterId
+    if (updateUrl) {
+      router.push({ query: { ...route.query, chapter: String(chapterId) } })
+    }
     setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 50)
   } catch {
     error.value = '加载章节内容失败'
+    mode.value = 'list'
+    currentChapter.value = null
   } finally {
     contentLoading.value = false
   }
 }
+
+watch(
+  () => route.query.chapter,
+  (newChapterId) => {
+    if (!newChapterId && mode.value === 'reader') {
+      goToList()
+    }
+  }
+)
 
 const currentChapterIndex = computed(() => {
   if (!currentChapter.value) return -1
@@ -139,21 +150,37 @@ function goNextChapter() {
 function goToList() {
   mode.value = 'list'
   currentChapter.value = null
-  window.scrollTo({ top: 0 })
+  nextTick(() => {
+    setTimeout(() => {
+      const id = lastReadChapterId.value
+      if (id) {
+        const el = document.querySelector(`[data-chapter-id="${id}"]`)
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        }
+      }
+    }, 50)
+  })
 }
 
-// 【优化】智能段落解析：合并连续换行，提取真正段落
 const paragraphs = computed(() => {
   const text = currentChapter.value?.content || ''
   if (!text) return []
-  // 将2个及以上的连续换行符视为段落分隔，1个换行符视为段落内折行
   return text.split(/\n{2,}/).filter(p => p.trim() !== '')
 })
 
-onMounted(loadChapters)
+onMounted(async () => {
+  await loadChapters()
+  const chapterIdFromUrl = route.query.chapter
+  if (chapterIdFromUrl) {
+    loadChapter(Number(chapterIdFromUrl), false)
+  }
+})
 
 function goBack() {
   if (mode.value === 'reader') {
+    const { chapter, ...restQuery } = route.query
+    router.replace({ query: restQuery })
     goToList()
   } else {
     router.back()
@@ -163,7 +190,6 @@ function goBack() {
 
 <template>
   <div class="novel-detail" :class="{ 'reader-mode': mode === 'reader' }">
-    <!-- Header -->
     <header class="detail-header">
       <button class="back-btn" @click="goBack">
         <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
@@ -193,7 +219,6 @@ function goBack() {
       <span>{{ error }}</span>
     </div>
 
-    <!-- ===== LIST MODE ===== -->
     <div v-if="mode === 'list'" class="list-view">
       <div v-if="chaptersLoading" class="loading-state">
         <div class="spinner"></div>
@@ -201,14 +226,20 @@ function goBack() {
       </div>
       <div v-else-if="chapters.length === 0" class="empty-state">暂无章节</div>
       <div v-else class="chapter-grid">
-        <button v-for="ch in chapters" :key="ch.id" class="chapter-card" @click="loadChapter(ch.id)">
+        <button
+          v-for="ch in chapters"
+          :key="ch.id"
+          :data-chapter-id="ch.id"
+          class="chapter-card"
+          :class="{ active: lastReadChapterId === ch.id }"
+          @click="loadChapter(ch.id)"
+        >
           <span class="chapter-card-title">{{ ch.chapter_title }}</span>
           <span class="chapter-card-meta">{{ ch.word_count?.toLocaleString() }}字</span>
         </button>
       </div>
     </div>
 
-    <!-- ===== READER MODE ===== -->
     <div v-if="mode === 'reader'" class="reader-view">
       <div v-if="contentLoading" class="loading-state">
         <div class="spinner"></div>
@@ -217,7 +248,6 @@ function goBack() {
       <div v-else-if="error" class="error-state"><span>{{ error }}</span></div>
 
       <template v-if="currentChapter && !contentLoading">
-        <!-- 阅读内容区域 (移除虚拟滚动，使用原生滚动) -->
         <div class="reader-content-wrapper" :style="{ background: readerSettings.bgColor, color: readerSettings.textColor }">
           <div class="reader-content-inner" :style="{ fontSize: readerSettings.fontSize + 'px', lineHeight: readerSettings.lineHeight }">
             <h2 class="reader-chapter-title">{{ currentChapter.chapter_title }}</h2>
@@ -226,13 +256,12 @@ function goBack() {
           </div>
         </div>
 
-        <!-- Bottom navigation bar -->
         <div class="reader-nav">
           <button class="nav-btn" :disabled="!hasPrevChapter" @click="goPrevChapter">
             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6" /></svg>
             上一章
           </button>
-          <button class="nav-btn toc-btn" @click="goToList">
+          <button class="nav-btn toc-btn" @click="goBack">
             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6" /><line x1="8" y1="12" x2="21" y2="12" /><line x1="8" y1="18" x2="21" y2="18" /></svg>
             目录
           </button>
@@ -244,12 +273,10 @@ function goBack() {
       </template>
     </div>
 
-    <!-- ===== Settings Overlay (遮罩层) ===== -->
     <Transition name="fade">
       <div v-if="showSettings" class="settings-overlay" @click="showSettings = false"></div>
     </Transition>
 
-    <!-- ===== Settings Panel (从底部滑出的浮层) ===== -->
     <Transition name="slide-up">
       <div v-if="showSettings" class="settings-panel">
         <div class="settings-handle"></div>
@@ -289,7 +316,6 @@ function goBack() {
 </template>
 
 <style scoped>
-/* ===== Layout ===== */
 .novel-detail {
   max-width: 1000px;
   margin: 0 auto;
@@ -299,12 +325,11 @@ function goBack() {
   background: var(--bg);
 }
 
-/* 【修改1】阅读模式下强制占满视口，禁止整页弹性滚动 */
 .novel-detail.reader-mode {
   max-width: 100%;
   height: 100vh;
-  height: 100dvh; /* 使用动态视口高度，解决手机浏览器地址栏收起时的留白问题 */
-  overflow: hidden; 
+  height: 100dvh;
+  overflow: hidden;
 }
 
 .detail-header {
@@ -363,7 +388,6 @@ function goBack() {
 
 .settings-btn:hover, .settings-btn.active { background: var(--accent-bg); color: var(--accent); }
 
-/* ===== Loading / Empty / Error ===== */
 .loading-state, .empty-state, .error-state {
   display: flex;
   flex-direction: column;
@@ -384,37 +408,71 @@ function goBack() {
 
 @keyframes spin { to { transform: rotate(360deg); } }
 
-/* ===== List Mode ===== */
 .list-view { flex: 1; padding: 16px; }
 
-.chapter-grid { display: flex; flex-direction: column; gap: 8px; }
+.chapter-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
 
 .chapter-card {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 16px; background: var(--card-bg); border: 1px solid var(--border);
-  border-radius: 8px; cursor: pointer; transition: all 0.15s; text-align: left;
-  width: 100%; font-family: inherit; font-size: inherit;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 16px;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.15s;
+  text-align: left;
+  width: 100%;
+  font-family: inherit;
+  font-size: inherit;
+  min-height: 80px;
 }
 
 .chapter-card:hover { background: var(--accent-bg); border-color: var(--accent); }
 
+.chapter-card.active {
+  border-color: var(--accent);
+  background: var(--accent-bg);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
 .chapter-card-title {
-  font-size: 15px; font-weight: 500; color: var(--text);
-  flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  word-break: break-word;
 }
 
-.chapter-card-meta { font-size: 12px; color: var(--text-muted); flex-shrink: 0; margin-left: 12px; }
+.chapter-card-meta {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 8px;
+  align-self: flex-end;
+}
 
-/* ===== Reader Mode (原生滚动重构) ===== */
 .reader-view {
-  flex: 1; display: flex; flex-direction: column; min-height: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 
-/* 【修改2】增加底部 padding，防止最后几行字被固定导航栏遮挡 */
 .reader-content-wrapper {
-  flex: 1; overflow-y: auto; padding: 24px 16px 100px 16px; /* 底部留出 100px 安全距离 */
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px 16px 100px 16px;
   transition: background 0.3s, color 0.3s;
-  -webkit-overflow-scrolling: touch; /* iOS 顺滑滚动 */
+  -webkit-overflow-scrolling: touch;
 }
 
 .reader-content-inner {
@@ -423,67 +481,93 @@ function goBack() {
 }
 
 .reader-chapter-title {
-  text-align: center; font-weight: 600; margin: 0 0 24px; opacity: 0.9;
+  text-align: center;
+  font-weight: 600;
+  margin: 0 0 24px;
+  opacity: 0.9;
 }
 
 .text-paragraph {
-  margin: 0 0 1.5em; 
-  text-indent: 2em;   
+  margin: 0 0 1.5em;
+  text-indent: 2em;
   white-space: pre-wrap;
   word-break: break-word;
 }
 
 .reader-end-marker {
-  text-align: center; margin-top: 3em; opacity: 0.4; font-size: 0.9em;
+  text-align: center;
+  margin-top: 3em;
+  opacity: 0.4;
+  font-size: 0.9em;
 }
 
-/* ===== Reader Navigation (吸底重构) ===== */
-/* 【修改3】使用 fixed 强制吸附在屏幕底部 */
 .reader-nav {
   position: fixed;
   bottom: 0;
   left: 0;
   right: 0;
   z-index: 10;
-  display: flex; align-items: center; justify-content: space-between;
-  gap: 8px; padding: 10px 16px; border-top: 1px solid var(--border);
-  background: var(--card-bg); 
-  padding-bottom: calc(10px + env(safe-area-inset-bottom)); /* 适配 iPhone 底部小黑条 */
-  box-shadow: 0 -2px 10px rgba(0,0,0,0.05); /* 加点阴影，区分内容区 */
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 16px;
+  border-top: 1px solid var(--border);
+  background: var(--card-bg);
+  padding-bottom: calc(10px + env(safe-area-inset-bottom));
+  box-shadow: 0 -2px 10px rgba(0,0,0,0.05);
 }
 
 .nav-btn {
-  display: inline-flex; align-items: center; gap: 4px; padding: 10px 16px;
-  border: 1px solid var(--border); border-radius: 8px; background: var(--card-bg);
-  color: var(--text); font-size: 14px; cursor: pointer; font-family: inherit;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--card-bg);
+  color: var(--text);
+  font-size: 14px;
+  cursor: pointer;
+  font-family: inherit;
 }
 
 .nav-btn:hover:not(:disabled) { background: var(--accent-bg); border-color: var(--accent); }
 .nav-btn:disabled { opacity: 0.3; cursor: default; }
 .toc-btn { min-width: 80px; justify-content: center; }
 
-/* ===== Settings Panel ===== */
 .settings-overlay {
-  position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-  background: rgba(0, 0, 0, 0.4); z-index: 90;
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0, 0, 0, 0.4);
+  z-index: 90;
 }
 
 .settings-panel {
-  position: fixed; bottom: 0; left: 0; right: 0;
-  z-index: 100; background: var(--card-bg);
-  border-top-left-radius: 16px; border-top-right-radius: 16px;
+  position: fixed;
+  bottom: 0; left: 0; right: 0;
+  z-index: 100;
+  background: var(--card-bg);
+  border-top-left-radius: 16px;
+  border-top-right-radius: 16px;
   box-shadow: 0 -4px 20px rgba(0,0,0,0.15);
   padding-bottom: env(safe-area-inset-bottom);
 }
 
 .settings-handle {
-  width: 40px; height: 4px; background: var(--border);
-  border-radius: 2px; margin: 12px auto 8px;
+  width: 40px; height: 4px;
+  background: var(--border);
+  border-radius: 2px;
+  margin: 12px auto 8px;
 }
 
 .settings-inner {
-  max-width: 600px; margin: 0 auto; padding: 0 20px 20px;
-  display: flex; flex-direction: column; gap: 16px;
+  max-width: 600px;
+  margin: 0 auto;
+  padding: 0 20px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
 }
 
 .setting-row { display: flex; align-items: center; justify-content: space-between; }
@@ -491,9 +575,16 @@ function goBack() {
 .setting-controls { display: flex; align-items: center; gap: 12px; }
 
 .setting-btn {
-  width: 36px; height: 32px; border: 1px solid var(--border); border-radius: 6px;
-  background: var(--bg); color: var(--text); font-size: 13px; cursor: pointer;
-  display: flex; align-items: center; justify-content: center;
+  width: 36px; height: 32px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 .setting-btn:hover { background: var(--accent-bg); border-color: var(--accent); }
 
@@ -501,23 +592,27 @@ function goBack() {
 
 .color-swatches { display: flex; gap: 10px; }
 .color-swatch {
-  width: 32px; height: 32px; border-radius: 50%; cursor: pointer;
-  border: 2px solid transparent; transition: transform 0.15s, border-color 0.15s;
+  width: 32px; height: 32px;
+  border-radius: 50%;
+  cursor: pointer;
+  border: 2px solid transparent;
+  transition: transform 0.15s, border-color 0.15s;
   box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 .color-swatch:hover { transform: scale(1.15); }
 .color-swatch.active { border-color: var(--accent); transform: scale(1.15); }
 .text-swatch { border-radius: 4px; }
 
-/* ===== Transitions ===== */
 .fade-enter-active, .fade-leave-active { transition: opacity 0.2s ease; }
 .fade-enter-from, .fade-leave-to { opacity: 0; }
 
 .slide-up-enter-active, .slide-up-leave-active { transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
 .slide-up-enter-from, .slide-up-leave-to { transform: translateY(100%); }
 
-/* ===== Mobile ===== */
 @media (max-width: 640px) {
+  .chapter-grid {
+    grid-template-columns: 1fr;
+  }
   .list-view { padding: 12px 8px; }
   .chapter-card { padding: 12px; }
   .reader-content-wrapper { padding: 16px 12px 100px 12px; }

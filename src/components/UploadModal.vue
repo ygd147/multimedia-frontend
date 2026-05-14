@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import { MediaType } from '../types/media'
-import type { MediaItem } from '../types/media'
 import { useActions } from '../composables/useActions'
 
 const props = defineProps<{
@@ -85,7 +84,7 @@ async function handleSubmit() {
             type="file" 
             ref="fileInput" 
             style="display: none" 
-            :multiple="mediaType !== MediaType.Novel" 
+            multiple
             @change="handleFileChange" 
           />
         </div>
